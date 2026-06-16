@@ -22,7 +22,7 @@ const Store = (() => {
     expenses: [],      // {id, fecha, domain, categoria, bank_id, monto, descripcion}
     incomes: [],       // {id, fecha, domain, categoria, bank_id, monto, descripcion}
     payables: [],      // {id, fecha, proveedor, descripcion, domain, monto_total, pagado, vencimiento, estado}
-    settings: { theme: 'rancho-claro', currency: 'Bs', onboarded: false, user: null },
+    settings: { theme: 'oro-claro', currency: 'Bs', onboarded: false, user: null },
   });
 
   function uid() { return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }

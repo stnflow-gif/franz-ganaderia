@@ -7,11 +7,10 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 // ---------- Listas de referencia ----------
 const THEMES = [
-  { id: 'rancho-claro', name: 'Rancho claro', sw: ['#f3f0e7', '#2f7d55', '#8b5e3c'] },
-  { id: 'rancho',       name: 'Rancho oscuro', sw: ['#14110d', '#4a8c5e', '#b0763d'] },
-  { id: 'verde-noche',  name: 'Verde noche',   sw: ['#0d1512', '#10b981', '#d97706'] },
-  { id: 'tierra-clara', name: 'Tierra clara',  sw: ['#fbf8f3', '#c9923b', '#6b4f2c'] },
-  { id: 'campo-azul',   name: 'Campo azul',    sw: ['#0b1120', '#3b82f6', '#e8a830'] },
+  { id: 'oro-claro', name: 'Oro claro',   sw: ['#f7f5f1', '#121110', '#c8a44d'] },
+  { id: 'oro-noche', name: 'Oro noche',   sw: ['#0d0c0a', '#d8b450', '#f6f2e9'] },
+  { id: 'marfil',    name: 'Marfil',      sw: ['#ffffff', '#1c1a14', '#c8a44d'] },
+  { id: 'carbon',    name: 'Carbón',      sw: ['#101012', '#d8b450', '#f4f4f5'] },
 ];
 const METODOS = ['Efectivo', 'Transferencia', 'Cheque', 'Crédito'];
 const ANIMAL_CATS = ['Vaca', 'Toro', 'Vaquilla', 'Ternero', 'Ternera', 'Novillo', 'Buey'];
@@ -47,7 +46,9 @@ const App = {
   formItems: [],
 
   init() {
-    this.applyTheme(Store.settings().theme || 'rancho-claro');
+    // Si el tema guardado ya no existe (paletas viejas), volver al dorado por defecto
+    if (!THEMES.some(t => t.id === Store.settings().theme)) Store.setSetting('theme', 'oro-claro');
+    this.applyTheme(Store.settings().theme || 'oro-claro');
     this.injectIcons();
     this.bindGlobal();
     if (Store.settings().user) this.enterApp(); else this.showLogin();
