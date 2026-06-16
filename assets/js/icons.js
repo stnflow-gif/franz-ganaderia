@@ -48,9 +48,34 @@ const ICON_PATHS = {
   cash:        '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6"/>',
   skull:       '<path d="M12 3a8 8 0 0 0-5 14v3h10v-3a8 8 0 0 0-5-14z"/><circle cx="9" cy="11" r="1.3"/><circle cx="15" cy="11" r="1.3"/><path d="M11 16h2"/>',
   dot:         '<circle cx="12" cy="12" r="2.4"/>',
+
+  // UI extra
+  eye:         '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+  close:       '<path d="M6 6l12 12M18 6 6 18"/>',
+  menu:        '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  logout:      '<path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4"/><path d="M16 17l5-5-5-5M21 12H9"/>',
+  receipt:     '<path d="M5 3v18l2-1 2 1 2-1 2 1 2-1 2 1V3l-2 1-2-1-2 1-2-1-2 1z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  tag:         '<path d="M3 12V5a2 2 0 0 1 2-2h7l9 9-9 9z"/><circle cx="8" cy="8" r="1.4"/>',
+  hash:        '<path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16"/>',
+  clock:       '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
+  phone:       '<path d="M5 3h4l2 5-3 2a12 12 0 0 0 5 5l2-3 5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2z"/>',
+  idcard:      '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="11" r="2"/><path d="M5 16c0-1.5 1.5-2.5 3-2.5s3 1 3 2.5M14 9h5M14 13h5"/>',
+  scale:       '<path d="M12 3v18M7 21h10M5 7h14l-3 6H8z"/>',
+  building:    '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2M10 21v-3h4v3"/>',
+  pdf:         '<path d="M6 2h9l5 5v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M14 2v6h6"/><path d="M8 14h1.5a1.5 1.5 0 0 1 0 3H8zM8 14v6M14 14v6M14 14h2M14 17h1.5"/>',
+  sparkles:    '<path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M19 14l.8 1.8L21.6 17l-1.8.8L19 19.6l-.8-1.8L16.4 17l1.8-.8z"/>',
 };
 
+// Logo de Google a color (marca oficial), no es trazo monocromo
+const GOOGLE_SVG = size => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">
+  <path fill="#4285F4" d="M22.5 12.2c0-.7-.06-1.4-.18-2.05H12v3.88h5.9a5.05 5.05 0 0 1-2.19 3.31v2.74h3.54c2.07-1.91 3.25-4.72 3.25-7.88z"/>
+  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.54-2.74c-.98.66-2.24 1.05-3.74 1.05-2.87 0-5.3-1.94-6.17-4.55H2.18v2.83A11 11 0 0 0 12 23z"/>
+  <path fill="#FBBC05" d="M5.83 14.1a6.6 6.6 0 0 1 0-4.2V7.07H2.18a11 11 0 0 0 0 9.86z"/>
+  <path fill="#EA4335" d="M12 5.25c1.62 0 3.07.56 4.21 1.65l3.14-3.14A11 11 0 0 0 12 1 11 11 0 0 0 2.18 7.07l3.65 2.83C6.7 7.19 9.13 5.25 12 5.25z"/>
+</svg>`;
+
 function icon(name, size = 24) {
+  if (name === 'google') return GOOGLE_SVG(size);
   const p = ICON_PATHS[name] || ICON_PATHS.dot;
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
 }

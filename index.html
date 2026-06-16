@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="es" data-theme="rancho">
+<html lang="es" data-theme="rancho-claro">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1">
-  <meta name="theme-color" content="#14110d">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f0e7">
   <title>Ganadería Dyck Manantial</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,160 +13,85 @@
 </head>
 <body>
 
+  <!-- ============ LOGIN ============ -->
+  <div class="login" id="loginScreen">
+    <div class="login-card">
+      <img class="logo" src="assets/img/logo.jpg" alt="Dyck Manantial">
+      <h2>Dyck Manantial</h2>
+      <p class="sub">Sistema de Gestión Ganadera</p>
+      <button class="btn-google" id="btnGoogle"><span data-icon="google" data-size="20"></span> Iniciar Sesión con Google</button>
+      <div class="divider">o con tu correo</div>
+      <div class="field"><label>Email</label><div class="control"><input type="email" id="logEmail" placeholder="franz@correo.com"></div></div>
+      <div class="field"><label>Contraseña</label><div class="control"><input type="password" id="logPass" placeholder="••••••••"></div></div>
+      <button class="btn btn-primary" style="width:100%" id="btnLogin">Entrar</button>
+      <p class="note-soft" id="loginNote">Conexión a Supabase pendiente — por ahora entrás en modo local.</p>
+    </div>
+  </div>
+
   <!-- ============ APP ============ -->
-  <div class="app" id="app">
+  <div class="shell hidden" id="shell">
 
-    <!-- ===== DASHBOARD ===== -->
-    <section class="screen active" id="screen-dashboard">
-      <div class="topbar">
-        <div class="brand">
-          <img class="logo" id="brandLogo" alt="Dyck Manantial" src="assets/img/logo.jpg">
-          <div>
-            <h1>Hola, Franz</h1>
-            <div class="sub" id="todayLabel"></div>
-          </div>
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="logo-box"><img src="assets/img/logo.jpg" alt="Dyck Manantial"></div>
+      <nav class="nav" id="nav">
+        <button class="on" data-go="dashboard"><span data-icon="home"></span> Dashboard</button>
+        <button data-go="compras"><span data-icon="cart"></span> Compras</button>
+        <button data-go="ventas"><span data-icon="trending"></span> Ventas</button>
+        <button data-go="gastos"><span data-icon="arrowDown"></span> Gastos</button>
+        <button data-go="ingresos"><span data-icon="coins"></span> Ingresos</button>
+        <button data-go="salidas"><span data-icon="receipt"></span> Salidas</button>
+        <button data-go="empleados"><span data-icon="workers"></span> Empleados</button>
+        <button data-go="bancos"><span data-icon="bank"></span> Bancos</button>
+        <button data-go="ajustes"><span data-icon="settings"></span> Ajustes</button>
+      </nav>
+      <div class="foot">
+        <div class="user-chip">
+          <div class="av" id="userAv">F</div>
+          <div><div class="nm" id="userName">Franz Dyck</div><div class="em" id="userEmail">modo local</div></div>
         </div>
-        <button class="icon-btn" data-go="ajustes" aria-label="Ajustes" data-icon="settings" data-size="21"></button>
+        <button class="logout-btn" id="btnLogout"><span data-icon="logout" data-size="16"></span> Cerrar sesión</button>
+      </div>
+    </aside>
+    <div class="scrim" id="scrim"></div>
+
+    <!-- Main -->
+    <main class="main">
+      <div class="topbar-mobile">
+        <button class="ham" id="ham" aria-label="Menú"><span data-icon="menu" data-size="22"></span></button>
+        <span class="ttl" id="mobileTitle">Dashboard</span>
+        <img src="assets/img/logo.jpg" alt="">
       </div>
 
-      <div class="card hero">
-        <div class="label">Balance total del mes</div>
-        <div class="balance" id="heroBalance">Bs 0</div>
-        <div class="split">
-          <div><div class="k"><span data-icon="arrowUp"></span> Ingresos</div><div class="v" id="heroIncome">Bs 0</div></div>
-          <div><div class="k"><span data-icon="arrowDown"></span> Gastos</div><div class="v" id="heroExpense">Bs 0</div></div>
-        </div>
-      </div>
-
-      <div class="kpis">
-        <div class="kpi" data-go="personal">
-          <div class="k"><span data-icon="user"></span> Personal · mes</div>
-          <div class="v" id="kpiPersonal">Bs 0</div>
-        </div>
-        <div class="kpi" data-go="ganaderia">
-          <div class="k"><span data-icon="cow"></span> Ganadería · mes</div>
-          <div class="v" id="kpiGanaderia">Bs 0</div>
-        </div>
-        <div class="kpi">
-          <div class="k"><span data-icon="cow"></span> Cabezas de ganado</div>
-          <div class="v" id="kpiHead">0</div>
-        </div>
-        <div class="kpi">
-          <div class="k"><span data-icon="coins"></span> Valor estimado hato</div>
-          <div class="v" id="kpiHerdValue">Bs 0</div>
-        </div>
-      </div>
-
-      <div class="section-h"><h2>Últimos movimientos</h2><a data-go="personal">Ver todo</a></div>
-      <div class="card" id="recentList"></div>
-
-      <div class="section-h"><h2>Proyección próximo mes</h2><a data-go="proyecciones">Ajustar</a></div>
-      <div class="card" id="projectionMini"></div>
-    </section>
-
-    <!-- ===== PERSONAL ===== -->
-    <section class="screen" id="screen-personal">
-      <div class="topbar"><h1>Personal</h1>
-        <span class="sync-pill" id="syncPill"><span class="dot"></span><span>Local</span></span></div>
-      <div class="card hero" style="background:linear-gradient(150deg,var(--c-accent),var(--c-primary))">
-        <div class="label">Balance personal del mes</div>
-        <div class="balance" id="personalBalance">Bs 0</div>
-        <div class="split">
-          <div><div class="k">Ingresos</div><div class="v" id="personalIncome">Bs 0</div></div>
-          <div><div class="k">Gastos</div><div class="v" id="personalExpense">Bs 0</div></div>
-        </div>
-      </div>
-      <div class="section-h"><h2>Movimientos</h2></div>
-      <div class="card" id="personalList"></div>
-    </section>
-
-    <!-- ===== GANADERÍA ===== -->
-    <section class="screen" id="screen-ganaderia">
-      <div class="topbar"><h1>Ganadería</h1></div>
-      <div class="card hero" style="background:linear-gradient(150deg,var(--c-primary),var(--c-accent))">
-        <div class="label">Balance ganadería del mes</div>
-        <div class="balance" id="ganaderiaBalance">Bs 0</div>
-        <div class="split">
-          <div><div class="k">Ingresos</div><div class="v" id="ganaderiaIncome">Bs 0</div></div>
-          <div><div class="k">Gastos</div><div class="v" id="ganaderiaExpense">Bs 0</div></div>
-        </div>
-      </div>
-
-      <div class="kpis">
-        <div class="kpi"><div class="k"><span data-icon="cow"></span> Cabezas</div><div class="v" id="gHead">0</div></div>
-        <div class="kpi" data-action="add-herd"><div class="k"><span data-icon="plus"></span> Registrar nac./compra/venta</div><div class="v" style="font-size:14px;color:var(--c-primary-2)">Movimiento de hato</div></div>
-      </div>
-
-      <div class="section-h"><h2>Empleados / Salarios</h2><a data-action="add-employee">＋ Agregar</a></div>
-      <div class="card" id="employeeList"></div>
-
-      <div class="section-h"><h2>Movimientos</h2></div>
-      <div class="card" id="ganaderiaList"></div>
-    </section>
-
-    <!-- ===== PROYECCIONES ===== -->
-    <section class="screen" id="screen-proyecciones">
-      <div class="topbar"><h1>Proyecciones</h1></div>
-      <div class="card">
-        <p class="muted" style="font-size:14px">Estimación del próximo mes según el promedio de gasto de los últimos 3 meses. Ajustá el % o sumá un evento extraordinario.</p>
-      </div>
-      <div class="segment mt" id="projDomainSeg">
-        <button class="on" data-dom="ganaderia"><span data-icon="cow"></span> Ganadería</button>
-        <button data-dom="personal"><span data-icon="user"></span> Personal</button>
-      </div>
-      <div class="card mt" id="projectionList"></div>
-    </section>
-
-    <!-- ===== AJUSTES ===== -->
-    <section class="screen" id="screen-ajustes">
-      <div class="topbar"><h1>Ajustes</h1></div>
-
-      <div class="section-h"><h2><span data-icon="edit"></span> Tema y color</h2></div>
-      <div class="card"><div class="theme-grid" id="themeGrid"></div></div>
-
-      <div class="section-h"><h2><span data-icon="bank"></span> Bancos</h2><a data-action="add-bank">＋ Agregar</a></div>
-      <div class="card" id="bankList"></div>
-
-      <div class="section-h"><h2><span data-icon="download"></span> Datos</h2></div>
-      <div class="card">
-        <button class="btn btn-ghost" id="btnExport"><span data-icon="download"></span> Exportar mis datos (JSON)</button>
-        <div class="sync-pill mt" id="syncStatus"><span class="dot"></span><span>Esperando conexión a Supabase</span></div>
-      </div>
-    </section>
-
+      <!-- Cada sección se renderiza desde app.js -->
+      <section class="screen on" id="screen-dashboard"></section>
+      <section class="screen" id="screen-compras"></section>
+      <section class="screen" id="screen-ventas"></section>
+      <section class="screen" id="screen-gastos"></section>
+      <section class="screen" id="screen-ingresos"></section>
+      <section class="screen" id="screen-salidas"></section>
+      <section class="screen" id="screen-empleados"></section>
+      <section class="screen" id="screen-bancos"></section>
+      <section class="screen" id="screen-ajustes"></section>
+    </main>
   </div>
 
-  <!-- FAB -->
-  <button class="fab" id="fab" aria-label="Registrar">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-  </button>
-
-  <!-- Bottom nav -->
-  <nav class="nav" id="nav">
-    <button class="on" data-go="dashboard">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Inicio</button>
-    <button data-go="personal">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>Personal</button>
-    <button data-go="ganaderia">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8c0-2 2-3 3-2m12 0c1-1 3 0 3 2M5 8c0 5 3 11 7 11s7-6 7-11c0-2-3-3-7-3S5 6 5 8z"/><path d="M9 12h.01M15 12h.01"/></svg>Ganadería</button>
-    <button data-go="proyecciones">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l5-5 4 4 8-8"/><path d="M17 8h4v4"/></svg>Proyección</button>
-  </nav>
-
-  <!-- ===== SHEET: registrar transacción ===== -->
-  <div class="sheet-bg" id="sheetBg"></div>
-  <div class="sheet" id="sheet"><div class="grab"></div><div id="sheetContent"></div></div>
-
-  <!-- ===== AUTH (oculta por ahora; se activa con Supabase) ===== -->
-  <div class="auth" id="authScreen" style="display:none">
-    <img class="logo-xl" src="assets/img/logo.jpg" alt="Dyck Manantial" style="object-fit:contain;background:#fff;padding:6px">
-    <h2>Dyck Manantial</h2>
-    <p class="sub">Tus gastos personales y de ganadería, en un solo lugar.</p>
-    <div class="field"><label>Email</label><div class="control"><input type="email" id="authEmail" placeholder="franz@correo.com"></div></div>
-    <div class="field"><label>Contraseña</label><div class="control"><input type="password" id="authPass" placeholder="••••••••"></div></div>
-    <button class="btn btn-primary" id="authBtn">Entrar</button>
-    <p class="muted mt" style="text-align:center;font-size:13px" id="authToggle">¿No tenés cuenta? Crear una</p>
+  <!-- Modal genérico -->
+  <div class="modal-bg" id="modalBg">
+    <div class="modal" id="modal">
+      <div class="modal-head"><h3 id="modalTitle">Título</h3>
+        <button class="iconbtn" id="modalClose"><span data-icon="close" data-size="18"></span></button></div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-foot" id="modalFoot"></div>
+    </div>
   </div>
+
+  <!-- Tour onboarding -->
+  <div class="tour-bg" id="tourBg"></div>
+  <div class="tour-spot hidden" id="tourSpot"></div>
+  <div class="tour-pop hidden" id="tourPop"></div>
+
+  <div id="toast"></div>
 
   <script src="assets/js/config.js"></script>
   <script src="assets/js/icons.js"></script>
