@@ -1,0 +1,12 @@
+# OS / editor
+Thumbs.db
+.DS_Store
+*.log
+
+# Dependencias (no usamos build, pero por si acaso)
+node_modules/
+dist/
+
+# Secretos — la anon key es pública, pero por las dudas no subir overrides locales
+assets/js/config.local.js
+.env
