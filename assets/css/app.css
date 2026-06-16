@@ -66,14 +66,21 @@ a{color:inherit;text-decoration:none}
   background:linear-gradient(180deg,rgba(255,255,255,.04),transparent)}
 .sidebar .logo-box img{width:118px;height:118px;object-fit:contain;border-radius:16px;background:#fff;padding:7px;
   box-shadow:0 6px 18px rgba(0,0,0,.25)}
-.nav{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:3px}
-.nav button{display:flex;align-items:center;gap:14px;width:100%;padding:12px 15px;border-radius:11px;
-  font-size:15px;font-weight:600;color:color-mix(in srgb,var(--c-sidebar-ink) 64%,transparent);transition:.16s;text-align:left}
-.nav button svg{width:20px;height:20px;flex-shrink:0;opacity:.9}
-.nav button:hover{background:color-mix(in srgb,var(--c-sidebar-ink) 9%,transparent);color:var(--c-sidebar-ink)}
-.nav button.on{background:linear-gradient(180deg,var(--c-primary-2),var(--c-primary));color:var(--c-primary-ink);
-  box-shadow:0 8px 20px -8px var(--c-gold);font-weight:700}
-.nav button.on svg{opacity:1}
+.nav{flex:1;overflow-y:auto;padding:12px 12px;display:flex;flex-direction:column;gap:5px}
+.nav button{display:flex;align-items:center;gap:13px;width:100%;padding:9px 11px;border-radius:14px;
+  color:color-mix(in srgb,var(--c-sidebar-ink) 70%,transparent);transition:.18s cubic-bezier(.22,1,.36,1);text-align:left;position:relative}
+.nav .ic-box{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex-shrink:0;
+  background:var(--c-gold-soft);color:var(--c-gold);transition:.18s;border:1px solid transparent}
+.nav .ic-box svg{width:21px;height:21px}
+.nav .lbl{display:flex;flex-direction:column;line-height:1.18;font-size:15px;font-weight:700}
+.nav .lbl small{font-size:11px;font-weight:500;opacity:.62;letter-spacing:.01em}
+.nav button:hover{background:color-mix(in srgb,var(--c-sidebar-ink) 8%,transparent);color:var(--c-sidebar-ink)}
+.nav button:hover .ic-box{transform:translateY(-1px) scale(1.04)}
+.nav button.on{background:linear-gradient(110deg,var(--c-primary),var(--c-primary-2));color:var(--c-primary-ink);
+  box-shadow:0 10px 24px -10px var(--c-gold),inset 0 1px 0 rgba(255,255,255,.25)}
+.nav button.on .lbl small{opacity:.72}
+.nav button.on .ic-box{background:rgba(0,0,0,.16);color:var(--c-primary-ink);border-color:rgba(0,0,0,.08)}
+.nav button.on::after{content:"";position:absolute;right:11px;width:7px;height:7px;border-radius:50%;background:var(--c-primary-ink);opacity:.55}
 .sidebar .foot{padding:14px;border-top:1px solid color-mix(in srgb,var(--c-sidebar-ink) 12%,transparent)}
 .user-chip{display:flex;align-items:center;gap:11px;padding:8px;border-radius:12px}
 .user-chip .av{width:38px;height:38px;border-radius:50%;background:var(--c-primary);color:var(--c-primary-ink);
