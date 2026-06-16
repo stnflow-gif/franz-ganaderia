@@ -137,6 +137,38 @@ a{color:inherit;text-decoration:none}
 .stat.feature::before{opacity:1;width:4px}
 .stat.feature .val{font-size:40px;color:var(--c-gold)}
 
+/* ---------- Gráfico ---------- */
+.chart-wrap{width:100%;overflow:hidden}
+.chart{width:100%;height:auto;display:block}
+.chart-legend{display:flex;gap:20px;margin-bottom:14px;font-size:13px;font-weight:600;color:var(--c-text-2)}
+.chart-legend span{display:inline-flex;align-items:center;gap:7px}
+.dotc{width:11px;height:11px;border-radius:3px;display:inline-block}
+.dotc.gold{background:var(--c-gold)} .dotc.dark{background:var(--c-text);opacity:.82}
+
+/* ---------- Dos columnas (Ganadería / Personal) ---------- */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.col-panel{background:var(--c-surface);border:1px solid var(--c-border);border-radius:18px;padding:22px;
+  box-shadow:0 1px 2px rgba(0,0,0,.04);position:relative;overflow:hidden}
+.col-panel::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:var(--c-gold)}
+.col-panel.personal::before{background:var(--c-text);opacity:.5}
+.col-head{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.col-head .ic-box{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--c-gold-soft);color:var(--c-gold)}
+.col-head .ic-box svg{width:22px;height:22px}
+.col-head h3{font-size:18px;font-weight:800}
+.col-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+.col-stats>div{background:var(--c-surface-2);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:3px}
+.col-stats .k{font-size:11.5px;color:var(--c-muted);font-weight:600}
+.col-stats .v{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
+.col-stats .v.income{color:var(--c-income)} .col-stats .v.expense{color:var(--c-expense)} .col-stats .v.gold{color:var(--c-gold)}
+.cc-title{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--c-muted);font-weight:700;margin-bottom:12px}
+.cat-row{margin-bottom:13px}
+.cat-top{display:flex;justify-content:space-between;align-items:center;font-size:13.5px;margin-bottom:6px}
+.cat-top span{display:inline-flex;align-items:center;gap:7px;color:var(--c-text-2);font-weight:600}
+.cat-top span svg{width:15px;height:15px;color:var(--c-muted)}
+.cat-top b{font-variant-numeric:tabular-nums}
+.cat-track{height:8px;border-radius:5px;background:var(--c-surface-2);overflow:hidden}
+.cat-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--c-primary),var(--c-gold))}
+
 .section{margin-top:26px}
 .section-title{font-size:16px;font-weight:800;margin-bottom:14px;display:flex;align-items:center;gap:9px}
 .section-title svg{width:19px;height:19px;color:var(--c-primary)}
@@ -276,6 +308,7 @@ textarea.control{resize:vertical;min-height:62px}
   .page{padding:20px 16px}
   .page-head h1{font-size:24px}
   .form-grid{grid-template-columns:1fr}
+  .two-col{grid-template-columns:1fr}
   .table-wrap{overflow-x:auto}
   .table{min-width:560px}
 }

@@ -159,6 +159,40 @@ const Store = (() => {
       return s;
     },
 
+    // Serie mensual (últimos n meses) de ingresos vs egresos (todo el negocio)
+    monthlySeries(n = 6) {
+      const out = [];
+      const base = new Date(); base.setDate(1);
+      for (let i = n - 1; i >= 0; i--) {
+        const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
+        const key = d.toISOString().slice(0, 7);
+        const ingreso = sum(db.incomes.filter(x => inMonth(x.fecha, key)), x => x.monto)
+                      + sum(db.sales.filter(x => inMonth(x.fecha, key)), x => x.total);
+        const egreso  = sum(db.expenses.filter(x => inMonth(x.fecha, key)), x => x.monto)
+                      + sum(db.purchases.filter(x => inMonth(x.fecha, key)), x => x.total);
+        out.push({ key, label: d.toLocaleDateString('es-BO', { month: 'short' }), ingreso, egreso });
+      }
+      return out;
+    },
+
+    // Desglose por área (ganaderia | personal) — todo el histórico
+    domainBreakdown(domain) {
+      const exp = db.expenses.filter(x => x.domain === domain);
+      const cats = {};
+      exp.forEach(x => { cats[x.categoria] = (cats[x.categoria] || 0) + x.monto; });
+      let ingreso = sum(db.incomes.filter(x => x.domain === domain), x => x.monto);
+      let egreso = sum(exp, x => x.monto);
+      if (domain === 'ganaderia') {
+        const compras = sum(db.purchases, p => p.total);
+        const salarios = sum(db.employees.flatMap(e => e.pagos || []), p => p.monto);
+        if (compras) { cats['Compra de ganado'] = (cats['Compra de ganado'] || 0) + compras; egreso += compras; }
+        if (salarios) { cats['Salarios'] = (cats['Salarios'] || 0) + salarios; egreso += salarios; }
+        ingreso += sum(db.sales, s => s.total);
+      }
+      const byCategory = Object.entries(cats).map(([cat, monto]) => ({ cat, monto })).sort((a, b) => b.monto - a.monto);
+      return { ingreso, egreso, balance: ingreso - egreso, byCategory };
+    },
+
     syncQueueSize() { try { return JSON.parse(localStorage.getItem(SYNC) || '[]').length; } catch (e) { return 0; } },
     exportJSON: () => JSON.stringify(db, null, 2),
   };

@@ -141,7 +141,24 @@ const App = {
         <div class="hint">Saldo total + cuentas por cobrar − cuentas por pagar</div></div>
     </div>`;
 
-    // Resumen rápido
+    // ----- Gráfico: ingresos vs egresos por mes -----
+    const serie = Store.monthlySeries(6);
+    h += `<div class="section"><div class="section-title"><span data-icon="chart"></span> Ingresos vs Egresos (últimos 6 meses)</div>
+      <div class="panel"><div class="panel-body" style="padding:22px">
+        <div class="chart-legend">
+          <span><i class="dotc gold"></i> Ingresos</span>
+          <span><i class="dotc dark"></i> Egresos</span>
+        </div>
+        ${this.barChart(serie)}
+      </div></div></div>`;
+
+    // ----- Dos columnas: Ganadería / Vida Personal -----
+    h += `<div class="section"><div class="two-col">
+      ${this.domainColumn('ganaderia', 'Ganadería', 'cow')}
+      ${this.domainColumn('personal', 'Vida Personal', 'user')}
+    </div></div>`;
+
+    // ----- Resumen del hato -----
     h += `<div class="section"><div class="section-title"><span data-icon="cow"></span> Resumen del hato</div>
       <div class="stat-grid">
         ${stat('Cabezas de ganado', head, 'cow', '', 'Compras − ventas')}
@@ -149,6 +166,53 @@ const App = {
         ${stat('Ingresos del mes', money(Store.finance(monthKey()).totalIngresos), 'coins', 'income', 'Otros ingresos')}
       </div></div>`;
     this.paint('dashboard', h);
+  },
+
+  // Gráfico de barras SVG (ingresos vs egresos)
+  barChart(serie) {
+    const max = Math.max(1, ...serie.flatMap(s => [s.ingreso, s.egreso]));
+    const W = 720, H = 220, pad = 28, bw = 16, gap = 6;
+    const n = serie.length;
+    const slot = (W - pad * 2) / n;
+    const y = v => H - pad - (v / max) * (H - pad * 2);
+    const allZero = serie.every(s => !s.ingreso && !s.egreso);
+    const bars = serie.map((s, i) => {
+      const cx = pad + slot * i + slot / 2;
+      const x1 = cx - bw - gap / 2, x2 = cx + gap / 2;
+      const yi = y(s.ingreso), ye = y(s.egreso);
+      return `
+        <rect x="${x1}" y="${yi}" width="${bw}" height="${H - pad - yi}" rx="4" fill="var(--c-gold)"></rect>
+        <rect x="${x2}" y="${ye}" width="${bw}" height="${H - pad - ye}" rx="4" fill="var(--c-text)" opacity=".82"></rect>
+        <text x="${cx}" y="${H - 9}" text-anchor="middle" font-size="12" fill="var(--c-muted)">${esc(s.label)}</text>`;
+    }).join('');
+    return `<div class="chart-wrap"><svg viewBox="0 0 ${W} ${H}" class="chart" preserveAspectRatio="xMidYMid meet">
+      <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="var(--c-border-2)"></line>
+      ${bars}
+      ${allZero ? `<text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="14" fill="var(--c-muted)">Sin datos aún — cargá movimientos para ver el gráfico</text>` : ''}
+    </svg></div>`;
+  },
+
+  // Columna de área (ganadería / personal)
+  domainColumn(domain, title, ic) {
+    const d = Store.domainBreakdown(domain);
+    const maxCat = Math.max(1, ...d.byCategory.map(c => c.monto));
+    const cats = d.byCategory.slice(0, 6);
+    return `<div class="col-panel ${domain}">
+      <div class="col-head"><span class="ic-box" data-icon="${ic}"></span><h3>${esc(title)}</h3></div>
+      <div class="col-stats">
+        <div><span class="k">Ingresos</span><span class="v income">${money(d.ingreso)}</span></div>
+        <div><span class="k">Egresos</span><span class="v expense">${money(d.egreso)}</span></div>
+        <div><span class="k">Balance</span><span class="v ${d.balance >= 0 ? 'gold' : 'expense'}">${money(d.balance)}</span></div>
+      </div>
+      <div class="col-cats">
+        <div class="cc-title">Desglose de egresos</div>
+        ${cats.length ? cats.map(c => `
+          <div class="cat-row">
+            <div class="cat-top"><span><span data-icon="${CAT_ICON[c.cat] || 'dot'}" data-size="15"></span> ${esc(c.cat)}</span><b>${money(c.monto)}</b></div>
+            <div class="cat-track"><div class="cat-fill" style="width:${Math.max(4, (c.monto / maxCat) * 100)}%"></div></div>
+          </div>`).join('') : `<div class="empty" style="padding:18px">Sin egresos en esta área.</div>`}
+      </div>
+    </div>`;
   },
 
   // ============================================================
