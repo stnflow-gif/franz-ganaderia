@@ -195,6 +195,49 @@ const Store = (() => {
 
     syncQueueSize() { try { return JSON.parse(localStorage.getItem(SYNC) || '[]').length; } catch (e) { return 0; } },
     exportJSON: () => JSON.stringify(db, null, 2),
+
+    // Reiniciar todo (deja sólo bancos/ajustes por defecto, conserva tema y usuario)
+    reset() {
+      const keepTheme = db.settings.theme, keepUser = db.settings.user;
+      db = seed(); db.settings.theme = keepTheme; db.settings.user = keepUser; db.settings.onboarded = true;
+      save(); window.dispatchEvent(new CustomEvent('store:changed'));
+    },
+
+    // Cargar datos de ejemplo para demo (genera movimientos en los últimos meses)
+    loadDemo() {
+      this.reset();
+      const mAgo = k => { const d = new Date(); d.setMonth(d.getMonth() - k); return d.toISOString().slice(0, 10); };
+      const bg = db.banks[0].id, be = db.banks[1].id;
+      // Empleados con historial
+      const e1 = this.addEmployee({ nombre: 'Ángel Condori', documento: '6786347', puesto: 'Vaquero', telefono: '67863476', salario: 1136.60 });
+      const e2 = this.addEmployee({ nombre: 'Juan Pérez', puesto: 'Capataz', salario: 2000 });
+      [0, 1, 2].forEach(k => { this.payEmployee(e1.id, { monto: 1136.60, fecha: mAgo(k), bank_id: bg });
+        this.payEmployee(e2.id, { monto: 2000, fecha: mAgo(k), bank_id: bg }); });
+      // Compras y ventas de ganado
+      this.addPurchase({ fecha: mAgo(4), proveedor: 'Hacienda San Juan', bank_id: bg, metodo_pago: 'Transferencia',
+        items: [{ categoria: 'Vaca', raza: 'Nelore', cantidad: 10, precio: 3500, edad: 24, sexo: 'Hembra' }] });
+      this.addPurchase({ fecha: mAgo(2), proveedor: 'Remate Montero', bank_id: be, metodo_pago: 'Crédito', vencimiento: mAgo(-1),
+        items: [{ categoria: 'Toro', raza: 'Brahman', cantidad: 2, precio: 8000, edad: 36, sexo: 'Macho' }] });
+      this.addSale({ fecha: mAgo(1), cliente: 'Frigorífico del Este', bank_id: bg, metodo_pago: 'Transferencia',
+        items: [{ categoria: 'Novillo', raza: 'Nelore', cantidad: 6, precio: 4200, edad: 30, sexo: 'Macho' }] });
+      this.addSale({ fecha: mAgo(0), cliente: 'Mercado local', bank_id: be, metodo_pago: 'Efectivo',
+        items: [{ categoria: 'Vaca', raza: 'Criolla', cantidad: 3, precio: 3800, edad: 48, sexo: 'Hembra' }] });
+      // Gastos ganadería
+      [['Veterinario', 1200, 3], ['Medicamentos', 800, 2], ['Alimentación / Forraje', 3500, 1],
+       ['Combustible', 600, 1], ['Veterinario', 950, 0], ['Insumos / Equipos', 1500, 0]].forEach(([c, m, k]) =>
+        this.addExpense({ fecha: mAgo(k), domain: 'ganaderia', categoria: c, bank_id: bg, monto: m, descripcion: '' }));
+      // Gastos personales
+      [['Alimentación', 1800, 2], ['Salud', 700, 2], ['Transporte / Gasolina', 900, 1],
+       ['Vivienda', 2500, 1], ['Servicios', 650, 0], ['Alimentación', 1600, 0]].forEach(([c, m, k]) =>
+        this.addExpense({ fecha: mAgo(k), domain: 'personal', categoria: c, bank_id: be, monto: m, descripcion: '' }));
+      // Ingresos
+      this.addIncome({ fecha: mAgo(1), domain: 'ganaderia', categoria: 'Venta de leche', bank_id: bg, monto: 4200 });
+      this.addIncome({ fecha: mAgo(0), domain: 'personal', categoria: 'Cafetería', bank_id: be, monto: 5800 });
+      // Cuenta por pagar
+      this.addPayable({ fecha: mAgo(0), proveedor: 'Veterinaria El Campo', descripcion: 'Vacunas a crédito',
+        domain: 'ganaderia', monto_total: 1500, pagado: 500, vencimiento: mAgo(-1) });
+      window.dispatchEvent(new CustomEvent('store:changed'));
+    },
   };
 })();
 

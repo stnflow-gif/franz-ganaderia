@@ -646,12 +646,22 @@ const App = {
       <div class="panel"><div class="panel-body" style="padding:18px 22px;display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn btn-ghost" id="btnExport"><span data-icon="download"></span> Exportar datos (JSON)</button>
         <button class="btn btn-ghost" id="btnTour"><span data-icon="sparkles"></span> Ver tour de nuevo</button>
-      </div></div></div>`;
+        <button class="btn btn-ghost" id="btnDemo"><span data-icon="sparkles"></span> Cargar datos de ejemplo</button>
+        <button class="btn btn-danger" id="btnReset"><span data-icon="trash"></span> Borrar todo</button>
+      </div>
+      <div class="panel-body" style="padding:0 22px 18px"><p class="sub" style="color:var(--c-muted);font-size:13px">
+        "Datos de ejemplo" llena el sistema para que veas los gráficos y reportes con vida (ideal para mostrarle a Franz). "Borrar todo" lo deja limpio para empezar en serio.</p></div></div></div>`;
     this.paint('ajustes', h);
     const root = $('#screen-ajustes');
     $$('.theme-card', root).forEach(c => c.onclick = () => { this.applyTheme(c.dataset.theme); Store.setSetting('theme', c.dataset.theme); this.refresh(); });
     $('#btnExport').onclick = () => this.exportData();
     $('#btnTour').onclick = () => { this.go('dashboard'); setTimeout(() => this.startTour(), 300); };
+    $('#btnDemo').onclick = () => { Store.loadDemo(); toast('Datos de ejemplo cargados'); this.go('dashboard'); };
+    $('#btnReset').onclick = () => this.openModal('¿Borrar todos los datos?',
+      `<p style="color:var(--c-text-2)">Se eliminan compras, ventas, gastos, ingresos, salidas y empleados. No se puede deshacer.</p>`, [
+        { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
+        { label: 'Borrar todo', cls: 'btn-danger', icon: 'trash', fn: () => { Store.reset(); this.closeModal(); toast('Datos borrados'); this.go('dashboard'); } },
+      ]);
   },
 
   // ============================================================
