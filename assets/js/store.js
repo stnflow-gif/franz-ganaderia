@@ -17,6 +17,7 @@ const Store = (() => {
       { id: uid(), name: 'Efectivo', tipo: 'Caja', saldo_inicial: 0, active: true },
     ],
     employees: [],     // {id, nombre, documento, puesto, telefono, salario, estado, pagos:[]}
+    animals: [],       // {id, codigo, categoria, raza, sexo, edad_meses, peso, origen, precio, fecha_ingreso, estado, fecha_baja, motivo}
     purchases: [],     // {id, fecha, proveedor, bank_id, metodo_pago, observaciones, items:[], total, pagado}
     sales: [],         // {id, fecha, cliente, bank_id, metodo_pago, observaciones, items:[], total, pagado}
     expenses: [],      // {id, fecha, domain, categoria, bank_id, monto, descripcion}
@@ -123,8 +124,32 @@ const Store = (() => {
       p.estado = p.pagado >= p.monto_total ? 'pagado' : 'pendiente'; commit('update', 'payables', p); },
     removePayable(id) { db.payables = db.payables.filter(x => x.id !== id); commit('delete', 'payables', { id }); },
 
-    // ---------- Inventario de hato (derivado de compras/ventas) ----------
+    // ---------- Animales (registro individual del hato) ----------
+    animals: () => db.animals,
+    livingAnimals: () => db.animals.filter(a => a.estado === 'vivo'),
+    addAnimal(a) {
+      const row = { id: uid(), codigo: a.codigo || '', categoria: a.categoria || 'Vaca', raza: a.raza || '',
+        sexo: a.sexo || 'Hembra', edad_meses: +a.edad_meses || 0, peso: +a.peso || 0, origen: a.origen || 'compra',
+        precio: +a.precio || 0, fecha_ingreso: a.fecha_ingreso || today(), estado: 'vivo', fecha_baja: null, motivo: '', created_at: now() };
+      db.animals.push(row); commit('insert', 'animals', row); return row;
+    },
+    updateAnimal(id, patch) { const a = db.animals.find(x => x.id === id); if (a) { Object.assign(a, patch); commit('update', 'animals', a); } },
+    killAnimal(id, info) { const a = db.animals.find(x => x.id === id); if (!a) return;
+      a.estado = 'muerto'; a.fecha_baja = info.fecha || today(); a.motivo = info.motivo || 'Desconocido'; commit('update', 'animals', a); },
+    sellAnimalMark(id, fecha) { const a = db.animals.find(x => x.id === id); if (!a) return;
+      a.estado = 'vendido'; a.fecha_baja = fecha || today(); commit('update', 'animals', a); },
+    reviveAnimal(id) { const a = db.animals.find(x => x.id === id); if (a) { a.estado = 'vivo'; a.fecha_baja = null; a.motivo = ''; commit('update', 'animals', a); } },
+    removeAnimal(id) { db.animals = db.animals.filter(a => a.id !== id); commit('delete', 'animals', { id }); },
+    deaths: () => db.animals.filter(a => a.estado === 'muerto'),
+    deathsByReason() {
+      const m = {}; db.animals.filter(a => a.estado === 'muerto').forEach(a => { const k = a.motivo || 'Desconocido'; m[k] = (m[k] || 0) + 1; });
+      return Object.entries(m).map(([motivo, n]) => ({ motivo, n })).sort((a, b) => b.n - a.n);
+    },
+
+    // ---------- Inventario de hato ----------
+    // Cabezas vivas: registro individual si existe; si no, estimación por compras−ventas
     headCount() {
+      if (db.animals.length) return db.animals.filter(a => a.estado === 'vivo').length;
       const compra = sum(db.purchases.flatMap(p => p.items || []), it => +it.cantidad || 0);
       const venta = sum(db.sales.flatMap(s => s.items || []), it => +it.cantidad || 0);
       return compra - venta;
@@ -236,6 +261,15 @@ const Store = (() => {
       // Cuenta por pagar
       this.addPayable({ fecha: mAgo(0), proveedor: 'Veterinaria El Campo', descripcion: 'Vacunas a crédito',
         domain: 'ganaderia', monto_total: 1500, pagado: 500, vencimiento: mAgo(-1) });
+      // Animales individuales
+      const razas = ['Nelore', 'Brahman', 'Criolla', 'Gyr'];
+      for (let i = 1; i <= 24; i++) this.addAnimal({ codigo: 'VAC-' + String(i).padStart(3, '0'),
+        categoria: i % 6 === 0 ? 'Toro' : i % 3 === 0 ? 'Vaquilla' : 'Vaca', raza: razas[i % 4],
+        sexo: i % 6 === 0 ? 'Macho' : 'Hembra', edad_meses: 12 + (i % 40), peso: 280 + (i % 120),
+        origen: i <= 10 ? 'compra' : 'nacimiento', precio: 3500, fecha_ingreso: mAgo(4) });
+      // Dos muertes con motivo
+      this.killAnimal(db.animals[3].id, { fecha: mAgo(1), motivo: 'Enfermedad' });
+      this.killAnimal(db.animals[7].id, { fecha: mAgo(0), motivo: 'Accidente' });
       window.dispatchEvent(new CustomEvent('store:changed'));
     },
   };

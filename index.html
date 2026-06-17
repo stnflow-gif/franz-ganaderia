@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=7">
+  <link rel="stylesheet" href="assets/css/app.css?v=8">
 </head>
 <body>
 
@@ -36,16 +36,12 @@
       <div class="logo-box"><img src="assets/img/logo.jpg" alt="Dyck Manantial"></div>
       <nav class="nav" id="nav">
         <button class="on" data-go="dashboard"><span class="ic-box" data-icon="home"></span><span class="lbl">Dashboard<small>Resumen general</small></span></button>
-        <button data-go="compras"><span class="ic-box" data-icon="cart"></span><span class="lbl">Compras<small>Compra de ganado</small></span></button>
-        <button data-go="ventas"><span class="ic-box" data-icon="trending"></span><span class="lbl">Ventas<small>Venta de ganado</small></span></button>
-        <button data-go="gastos"><span class="ic-box" data-icon="arrowDown"></span><span class="lbl">Gastos<small>Egresos</small></span></button>
-        <button data-go="ingresos"><span class="ic-box" data-icon="coins"></span><span class="lbl">Ingresos<small>Entradas</small></span></button>
-        <button data-go="salidas"><span class="ic-box" data-icon="receipt"></span><span class="lbl">Salidas<small>Cuentas por pagar</small></span></button>
-        <button data-go="empleados"><span class="ic-box" data-icon="workers"></span><span class="lbl">Empleados<small>Vaqueros</small></span></button>
-        <button data-go="bancos"><span class="ic-box" data-icon="bank"></span><span class="lbl">Bancos<small>Cuentas</small></span></button>
-        <button data-go="ajustes"><span class="ic-box" data-icon="settings"></span><span class="lbl">Ajustes<small>Tema y datos</small></span></button>
+        <button data-go="ganaderia"><span class="ic-box" data-icon="cow"></span><span class="lbl">Ganadería<small>Operación del campo</small></span></button>
+        <button data-go="personales"><span class="ic-box" data-icon="arrowDown"></span><span class="lbl">Gastos personales<small>Tus egresos</small></span></button>
+        <button data-go="ingresos"><span class="ic-box" data-icon="coins"></span><span class="lbl">Ingresos<small>Todo lo que entra</small></span></button>
       </nav>
       <div class="foot">
+        <button class="logout-btn" data-go="ajustes" id="btnSettings"><span data-icon="settings" data-size="16"></span> Ajustes</button>
         <div class="user-chip">
           <div class="av" id="userAv">F</div>
           <div><div class="nm" id="userName">Franz Dyck</div><div class="em" id="userEmail">modo local</div></div>
@@ -65,15 +61,16 @@
 
       <!-- Cada sección se renderiza desde app.js -->
       <section class="screen on" id="screen-dashboard"></section>
-      <section class="screen" id="screen-compras"></section>
-      <section class="screen" id="screen-ventas"></section>
-      <section class="screen" id="screen-gastos"></section>
+      <section class="screen" id="screen-ganaderia"></section>
+      <section class="screen" id="screen-personales"></section>
       <section class="screen" id="screen-ingresos"></section>
-      <section class="screen" id="screen-salidas"></section>
-      <section class="screen" id="screen-empleados"></section>
-      <section class="screen" id="screen-bancos"></section>
       <section class="screen" id="screen-ajustes"></section>
     </main>
+
+    <!-- Botón flotante: gasto rápido -->
+    <button class="fab" id="fabQuick" title="Gasto rápido">
+      <span data-icon="plus" data-size="26"></span>
+    </button>
   </div>
 
   <!-- Modal genérico -->
@@ -93,11 +90,11 @@
 
   <div id="toast"></div>
 
-  <script src="assets/js/config.js?v=7"></script>
-  <script src="assets/js/icons.js?v=7"></script>
-  <script src="assets/js/store.js?v=7"></script>
-  <script src="assets/js/app.js?v=7"></script>
-  <script src="assets/js/sync.js?v=7"></script>
+  <script src="assets/js/config.js?v=8"></script>
+  <script src="assets/js/icons.js?v=8"></script>
+  <script src="assets/js/store.js?v=8"></script>
+  <script src="assets/js/app.js?v=8"></script>
+  <script src="assets/js/sync.js?v=8"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));

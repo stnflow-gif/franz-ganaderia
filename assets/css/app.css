@@ -174,6 +174,15 @@ a{color:inherit;text-decoration:none}
 .section-title{font-size:16px;font-weight:800;margin-bottom:14px;display:flex;align-items:center;gap:9px}
 .section-title svg{width:19px;height:19px;color:var(--c-primary)}
 
+/* ---------- Sub-tabs (Ganadería) ---------- */
+.subtabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:20px;scrollbar-width:thin}
+.subtab{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border-radius:12px;white-space:nowrap;
+  font-weight:700;font-size:14px;color:var(--c-text-2);background:var(--c-surface);border:1px solid var(--c-border);transition:.16s}
+.subtab svg{width:17px;height:17px;opacity:.85}
+.subtab:hover{border-color:var(--c-border-2)}
+.subtab.on{background:linear-gradient(110deg,var(--c-primary),var(--c-primary-2));color:var(--c-primary-ink);
+  border-color:transparent;box-shadow:0 8px 18px -10px var(--c-gold)}
+
 /* ---------- Panel / tabla ---------- */
 .panel{background:var(--c-surface);border:1px solid var(--c-border);border-radius:18px;overflow:hidden;
   box-shadow:0 1px 3px rgba(0,0,0,.04)}
@@ -214,6 +223,18 @@ a{color:inherit;text-decoration:none}
   font-size:13.5px;color:var(--c-muted);transition:.16s}
 .segment button svg{width:16px;height:16px}
 .segment button.on{background:var(--c-surface);color:var(--c-text);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+
+/* ---------- FAB gasto rápido ---------- */
+.fab{position:fixed;right:26px;bottom:26px;z-index:60;display:flex;align-items:center;gap:9px;
+  height:58px;padding:0 22px 0 18px;border-radius:30px;
+  background:linear-gradient(150deg,var(--c-primary-2),var(--c-primary));color:var(--c-primary-ink);
+  font-weight:800;font-size:15px;box-shadow:0 14px 30px -10px var(--c-gold),inset 0 1px 0 rgba(255,255,255,.3);
+  transition:.2s cubic-bezier(.22,1,.36,1)}
+.fab::after{content:"Gasto rápido"}
+.fab:hover{transform:translateY(-2px);box-shadow:0 20px 40px -12px var(--c-gold)}
+.fab:active{transform:scale(.96)}
+.fab svg{width:24px;height:24px}
+@media (max-width:560px){ .fab{right:16px;bottom:16px;padding:0;width:56px;height:56px;justify-content:center} .fab::after{display:none} }
 
 /* ============ FORM / MODAL ============ */
 .modal-bg{position:fixed;inset:0;z-index:80;background:rgba(10,8,4,.5);backdrop-filter:blur(3px);

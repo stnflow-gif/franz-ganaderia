@@ -37,8 +37,9 @@ const monthKey = (dt = new Date()) => dt.toISOString().slice(0, 7);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 const opt = (arr, sel) => arr.map(o => `<option ${o === sel ? 'selected' : ''}>${esc(o)}</option>`).join('');
 
-const SECTION_TITLES = { dashboard:'Dashboard', compras:'Compras', ventas:'Ventas', gastos:'Gastos',
-  ingresos:'Ingresos', salidas:'Salidas', empleados:'Empleados', bancos:'Bancos', ajustes:'Ajustes' };
+const DEATH_REASONS = ['Enfermedad', 'Accidente', 'Parto', 'Depredador', 'Robo', 'Vejez', 'Desconocido', 'Otro'];
+const SECTION_TITLES = { dashboard:'Dashboard', ganaderia:'Ganadería', personales:'Gastos personales',
+  ingresos:'Ingresos', ajustes:'Ajustes' };
 
 // ============================================================
 const App = {
@@ -65,7 +66,8 @@ const App = {
       this.login('Franz Dyck', email, 'email');
     };
     $('#btnLogout').onclick = () => { Store.setSetting('user', null); location.reload(); };
-    $$('#nav button').forEach(b => b.onclick = () => { this.go(b.dataset.go); this.closeDrawer(); });
+    $$('#nav button, #btnSettings').forEach(b => b.onclick = () => { this.go(b.dataset.go); this.closeDrawer(); });
+    $('#fabQuick').onclick = () => this.quickExpense();
     $('#ham').onclick = () => $('#sidebar').classList.toggle('open') | $('#scrim').classList.toggle('open');
     $('#scrim').onclick = () => this.closeDrawer();
     $('#modalClose').onclick = () => this.closeModal();
@@ -100,8 +102,8 @@ const App = {
     $('.main').scrollTop = 0; window.scrollTo(0, 0);
   },
   render(section) {
-    const map = { dashboard:'renderDashboard', compras:'renderCompras', ventas:'renderVentas', gastos:'renderGastos',
-      ingresos:'renderIngresos', salidas:'renderSalidas', empleados:'renderEmpleados', bancos:'renderBancos', ajustes:'renderAjustes' };
+    const map = { dashboard:'renderDashboard', ganaderia:'renderGanaderia', personales:'renderPersonales',
+      ingresos:'renderIngresos', ajustes:'renderAjustes' };
     if (map[section]) this[map[section]]();
   },
   refresh() { this.render(this.current); },
@@ -216,23 +218,225 @@ const App = {
   },
 
   // ============================================================
-  //  COMPRAS
+  //  GANADERÍA (hub con sub-secciones)
   // ============================================================
-  renderCompras() {
-    let h = this.head('Registro de Compras', 'Gestión de compras de ganado', 'Nueva Compra', 'cart', () => this.formCompra());
+  renderGanaderia() {
+    if (!this.ganTab) this.ganTab = 'resumen';
+    const t = this.ganTab;
+    const tabs = [['resumen','Resumen','chart'],['animales','Animales','cow'],['compras','Compras','cart'],
+      ['ventas','Ventas','trending'],['gastos','Gastos','arrowDown'],['empleados','Empleados','workers'],['deudas','Deudas','receipt']];
+    let h = this.head('Ganadería', 'Operación del campo');
+    h += `<div class="subtabs">${tabs.map(([k, l, ic]) =>
+      `<button class="subtab ${k === t ? 'on' : ''}" data-sub="${k}"><span data-icon="${ic}" data-size="17"></span> ${l}</button>`).join('')}</div>`;
+    h += `<div class="subtab-body">${this['gan_' + t]()}</div>`;
+    this.paint('ganaderia', h);
+    const root = $('#screen-ganaderia');
+    $$('.subtab', root).forEach(b => b.onclick = () => { this.ganTab = b.dataset.sub; this.renderGanaderia(); });
+    const addMap = { animales:() => this.formAnimal(), compras:() => this.formCompra(), ventas:() => this.formVenta(),
+      gastos:() => this.formExpense('ganaderia'), empleados:() => this.formEmpleado(), deudas:() => this.formSalida() };
+    const add = $('#subAdd', root); if (add && addMap[t]) add.onclick = addMap[t];
+    this.bindGan(root, t);
+  },
+
+  panelAdd(title, addLabel, addIcon, inner) {
+    return `<div class="panel"><div class="panel-head"><h3>${esc(title)}</h3>
+      <button class="btn btn-primary btn-sm" id="subAdd"><span data-icon="${addIcon}"></span> ${esc(addLabel)}</button></div>
+      <div class="panel-body">${inner}</div></div>`;
+  },
+  miniStats(items) {
+    return `<div class="stat-grid" style="margin-bottom:20px">${items.map(([l, v, ic, cls, hint]) =>
+      `<div class="stat"><div class="top"><div class="lbl">${l}</div><div class="ico"><span data-icon="${ic}"></span></div></div>
+        <div class="val ${cls || ''}">${v}</div>${hint ? `<div class="hint">${hint}</div>` : ''}</div>`).join('')}</div>`;
+  },
+
+  // ----- Resumen -----
+  gan_resumen() {
+    const f = Store.domainBreakdown('ganaderia');
+    const reasons = Store.deathsByReason();
+    const maxR = Math.max(1, ...reasons.map(r => r.n));
+    let h = this.miniStats([
+      ['Cabezas vivas', Store.headCount(), 'cow', '', 'Animales activos'],
+      ['Muertes', Store.deaths().length, 'skull', 'expense', 'Total registradas'],
+      ['Ingresos ganadería', money(f.ingreso), 'coins', 'income', 'Ventas + otros'],
+      ['Egresos ganadería', money(f.egreso), 'arrowDown', 'expense', 'Compras, gastos, salarios'],
+    ]);
+    h += this.panel('Muertes por motivo', reasons.length ? `<div style="padding:8px 22px 18px">${reasons.map(r => `
+        <div class="cat-row"><div class="cat-top"><span><span data-icon="skull" data-size="15"></span> ${esc(r.motivo)}</span><b>${r.n}</b></div>
+        <div class="cat-track"><div class="cat-fill" style="width:${(r.n / maxR) * 100}%"></div></div></div>`).join('')}</div>`
+      : this.emptyState('skull', 'Sin muertes registradas. Registrá los animales en la pestaña Animales.'));
+    return h;
+  },
+
+  // ----- Animales (registro individual) -----
+  gan_animales() {
+    const all = Store.animals();
+    const vivos = all.filter(a => a.estado === 'vivo').length;
+    const muertos = all.filter(a => a.estado === 'muerto').length;
+    const vendidos = all.filter(a => a.estado === 'vendido').length;
+    const badge = e => e === 'muerto' ? '<span class="badge pend">Muerto</span>'
+      : e === 'vendido' ? '<span class="badge off">Vendido</span>' : '<span class="badge ok">Vivo</span>';
+    const table = all.length ? `<div class="table-wrap"><table class="table">
+      <thead><tr><th>Código</th><th>Categoría</th><th>Raza</th><th>Sexo</th><th>Edad</th><th>Estado</th><th>Motivo / baja</th><th>Acciones</th></tr></thead>
+      <tbody>${all.slice().reverse().map(a => `<tr>
+        <td><b>${esc(a.codigo || '—')}</b></td><td>${esc(a.categoria)}</td><td>${esc(a.raza || '—')}</td><td>${esc(a.sexo)}</td>
+        <td>${a.edad_meses || 0} m</td><td>${badge(a.estado)}</td>
+        <td>${a.estado === 'muerto' ? esc(a.motivo) + ' · ' + fdate(a.fecha_baja) : a.estado === 'vendido' ? 'Vendido ' + fdate(a.fecha_baja) : '—'}</td>
+        <td class="actions">
+          ${a.estado === 'vivo' ? `<button class="iconbtn danger" data-kill="${a.id}" title="Registrar muerte"><span data-icon="skull" data-size="16"></span></button>` : `<button class="iconbtn ok" data-revive="${a.id}" title="Marcar vivo"><span data-icon="check" data-size="16"></span></button>`}
+          <button class="iconbtn" data-edit="${a.id}" title="Editar"><span data-icon="edit" data-size="16"></span></button>
+          <button class="iconbtn danger" data-del="${a.id}" title="Eliminar"><span data-icon="trash" data-size="16"></span></button>
+        </td></tr>`).join('')}</tbody></table></div>` : this.emptyState('cow', 'Sin animales. Registrá tu primera cabeza con el botón de arriba.');
+    return this.miniStats([
+      ['Vivos', vivos, 'cow', 'income'], ['Muertos', muertos, 'skull', 'expense'], ['Vendidos', vendidos, 'cash', ''],
+    ]) + this.panelAdd('Registro de animales', 'Registrar animal', 'plus', table);
+  },
+
+  // ----- Compras -----
+  gan_compras() {
     const rows = Store.purchases().slice().reverse();
-    h += this.panel('Historial de compras', rows.length ? `<div class="table-wrap"><table class="table">
+    const table = rows.length ? `<div class="table-wrap"><table class="table">
       <thead><tr><th>Fecha</th><th>Proveedor</th><th>Animales</th><th>Banco</th><th>Método</th><th class="num">Total</th><th></th></tr></thead>
-      <tbody>${rows.map(p => `<tr>
-        <td>${fdate(p.fecha)}</td><td>${esc(p.proveedor || '—')}</td>
+      <tbody>${rows.map(p => `<tr><td>${fdate(p.fecha)}</td><td>${esc(p.proveedor || '—')}</td>
         <td>${(p.items || []).reduce((s, i) => s + (+i.cantidad || 0), 0)} cab.</td>
         <td>${esc(Store.bankName(p.bank_id))}</td>
         <td><span class="badge ${p.metodo_pago === 'Crédito' ? 'pend' : 'off'}">${esc(p.metodo_pago)}</span></td>
         <td class="num">${money(p.total)}</td>
         <td class="actions"><button class="iconbtn danger" data-del="${p.id}"><span data-icon="trash" data-size="17"></span></button></td>
-      </tr>`).join('')}</tbody></table></div>` : this.emptyState('cart', 'Sin compras registradas todavía.'));
-    this.paint('compras', h);
-    $$('#screen-compras [data-del]').forEach(b => b.onclick = () => this.confirmDelete(() => Store.removePurchase(b.dataset.del)));
+      </tr>`).join('')}</tbody></table></div>` : this.emptyState('cart', 'Sin compras registradas.');
+    return this.panelAdd('Compras de ganado', 'Nueva compra', 'cart', table);
+  },
+
+  // ----- Ventas -----
+  gan_ventas() {
+    const rows = Store.sales().slice().reverse();
+    const table = rows.length ? `<div class="table-wrap"><table class="table">
+      <thead><tr><th>Fecha</th><th>Cliente</th><th>Animales</th><th>Banco</th><th>Método</th><th class="num">Total</th><th></th></tr></thead>
+      <tbody>${rows.map(s => `<tr><td>${fdate(s.fecha)}</td><td>${esc(s.cliente || '—')}</td>
+        <td>${(s.items || []).reduce((a, i) => a + (+i.cantidad || 0), 0)} cab.</td>
+        <td>${esc(Store.bankName(s.bank_id))}</td>
+        <td><span class="badge ${s.metodo_pago === 'Crédito' ? 'pend' : 'off'}">${esc(s.metodo_pago)}</span></td>
+        <td class="num">${money(s.total)}</td>
+        <td class="actions"><button class="iconbtn danger" data-del="${s.id}"><span data-icon="trash" data-size="17"></span></button></td>
+      </tr>`).join('')}</tbody></table></div>` : this.emptyState('trending', 'Sin ventas registradas.');
+    return `<p class="muted" style="font-size:13px;margin-bottom:14px">Las ventas también aparecen en la pestaña <b>Ingresos</b> y suman al Dashboard.</p>`
+      + this.panelAdd('Ventas de ganado', 'Nueva venta', 'trending', table);
+  },
+
+  // ----- Gastos de ganadería -----
+  gan_gastos() {
+    const rows = Store.expenses().filter(x => x.domain === 'ganaderia').slice().reverse();
+    return this.panelAdd('Gastos de ganadería', 'Nuevo gasto', 'arrowDown', this.expenseTable(rows));
+  },
+  expenseTable(rows) {
+    return rows.length ? `<div class="table-wrap"><table class="table">
+      <thead><tr><th>Fecha</th><th>Categoría</th><th>Banco</th><th>Detalle</th><th class="num">Monto</th><th></th></tr></thead>
+      <tbody>${rows.map(x => `<tr><td>${fdate(x.fecha)}</td>
+        <td><span style="display:inline-flex;align-items:center;gap:7px"><span data-icon="${CAT_ICON[x.categoria] || 'dot'}" data-size="17"></span>${esc(x.categoria)}</span></td>
+        <td>${esc(Store.bankName(x.bank_id))}</td><td>${esc(x.descripcion || '—')}</td>
+        <td class="num"><span class="pill-amount expense">− ${money(x.monto)}</span></td>
+        <td class="actions"><button class="iconbtn danger" data-del="${x.id}"><span data-icon="trash" data-size="17"></span></button></td>
+      </tr>`).join('')}</tbody></table></div>` : this.emptyState('arrowDown', 'Sin gastos registrados.');
+  },
+
+  // ----- Empleados -----
+  gan_empleados() {
+    const emps = Store.employees();
+    const table = emps.length ? `<div class="table-wrap"><table class="table">
+      <thead><tr><th>Nombre</th><th>Documento</th><th>Puesto</th><th>Teléfono</th><th class="num">Salario</th><th>Estado</th><th>Acciones</th></tr></thead>
+      <tbody>${emps.map(e => `<tr><td><b>${esc(e.nombre)}</b></td><td>${esc(e.documento || '—')}</td><td>${esc(e.puesto)}</td><td>${esc(e.telefono || '—')}</td>
+        <td class="num">${money(e.salario)}</td>
+        <td><span class="badge ${e.estado === 'inactivo' ? 'off' : 'ok'}">${e.estado === 'inactivo' ? 'Inactivo' : 'Activo'}</span></td>
+        <td class="actions">
+          <button class="iconbtn" data-hist="${e.id}" title="Historial"><span data-icon="eye" data-size="17"></span></button>
+          <button class="iconbtn ok" data-paye="${e.id}" title="Registrar pago"><span data-icon="cash" data-size="17"></span></button>
+          <button class="iconbtn" data-edite="${e.id}" title="Editar"><span data-icon="edit" data-size="17"></span></button>
+          <button class="iconbtn danger" data-dele="${e.id}" title="Eliminar"><span data-icon="trash" data-size="17"></span></button>
+        </td></tr>`).join('')}</tbody></table></div>` : this.emptyState('workers', 'Sin empleados. Agregá el primero.');
+    return this.miniStats([
+      ['Total', emps.length, 'workers'], ['Activos', emps.filter(e => e.estado !== 'inactivo').length, 'check', 'income'],
+      ['Nómina mensual', money(Store.nominaMensual()), 'coins'],
+    ]) + this.panelAdd('Empleados', 'Nuevo empleado', 'workers', table);
+  },
+
+  // ----- Deudas (cuentas por pagar) -----
+  gan_deudas() {
+    const rows = Store.payables();
+    const totalPagar = rows.filter(p => p.estado !== 'pagado').reduce((s, p) => s + (p.monto_total - p.pagado), 0);
+    const table = rows.length ? `<div class="table-wrap"><table class="table">
+      <thead><tr><th>Proveedor</th><th>Descripción</th><th>Área</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Pendiente</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
+      <tbody>${rows.slice().reverse().map(p => `<tr><td>${esc(p.proveedor || '—')}</td><td>${esc(p.descripcion || '—')}</td>
+        <td><span class="badge ${p.domain === 'personal' ? 'per' : 'gan'}">${p.domain === 'personal' ? 'Personal' : 'Ganadería'}</span></td>
+        <td class="num">${money(p.monto_total)}</td><td class="num">${money(p.pagado)}</td><td class="num">${money(p.monto_total - p.pagado)}</td>
+        <td>${fdate(p.vencimiento)}</td><td><span class="badge ${p.estado === 'pagado' ? 'ok' : 'pend'}">${p.estado === 'pagado' ? 'Pagado' : 'Pendiente'}</span></td>
+        <td class="actions">${p.estado !== 'pagado' ? `<button class="iconbtn ok" data-pay="${p.id}" title="Marcar pagado"><span data-icon="check" data-size="17"></span></button>` : ''}
+          <button class="iconbtn danger" data-del="${p.id}"><span data-icon="trash" data-size="17"></span></button></td>
+      </tr>`).join('')}</tbody></table></div>` : this.emptyState('receipt', 'Sin cuentas por pagar.');
+    return this.miniStats([['Total por pagar', money(totalPagar), 'arrowDown', 'expense'],
+      ['Cuentas', rows.length, 'receipt'], ['Pendientes', rows.filter(p => p.estado !== 'pagado').length, 'clock', 'warn']])
+      + this.panelAdd('Cuentas por pagar', 'Nueva cuenta', 'receipt', table);
+  },
+
+  // ----- Binding de filas según sub-tab -----
+  bindGan(root, t) {
+    if (t === 'compras') $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removePurchase(b.dataset.del)));
+    if (t === 'ventas') $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeSale(b.dataset.del)));
+    if (t === 'gastos') $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeExpense(b.dataset.del)));
+    if (t === 'deudas') {
+      $$('[data-pay]', root).forEach(b => b.onclick = () => { Store.payPayable(b.dataset.pay); toast('Marcado como pagado'); this.refresh(); });
+      $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removePayable(b.dataset.del)));
+    }
+    if (t === 'empleados') {
+      $$('[data-hist]', root).forEach(b => b.onclick = () => this.empleadoHist(b.dataset.hist));
+      $$('[data-paye]', root).forEach(b => b.onclick = () => this.formPagoEmpleado(b.dataset.paye));
+      $$('[data-edite]', root).forEach(b => b.onclick = () => this.formEmpleado(b.dataset.edite));
+      $$('[data-dele]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeEmployee(b.dataset.dele)));
+    }
+    if (t === 'animales') {
+      $$('[data-kill]', root).forEach(b => b.onclick = () => this.killAnimalModal(b.dataset.kill));
+      $$('[data-revive]', root).forEach(b => b.onclick = () => { Store.reviveAnimal(b.dataset.revive); toast('Marcado vivo'); this.refresh(); });
+      $$('[data-edit]', root).forEach(b => b.onclick = () => this.formAnimal(b.dataset.edit));
+      $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeAnimal(b.dataset.del)));
+    }
+  },
+
+  // ----- Form animal -----
+  formAnimal(id) {
+    const a = id ? Store.animals().find(x => x.id === id) : {};
+    const body = `<div class="form-grid">
+      <div class="field"><label>Código / Arete</label><div class="control"><input id="anCod" value="${esc(a.codigo || '')}" placeholder="Ej: VAC-001"></div></div>
+      <div class="field"><label>Categoría</label><select class="control" id="anCat">${opt(ANIMAL_CATS, a.categoria || 'Vaca')}</select></div>
+      <div class="field"><label>Raza</label><div class="control"><input id="anRaza" value="${esc(a.raza || '')}" placeholder="Ej: Nelore"></div></div>
+      <div class="field"><label>Sexo</label><select class="control" id="anSexo">${opt(['Hembra','Macho'], a.sexo || 'Hembra')}</select></div>
+      <div class="field"><label>Edad (meses)</label><div class="control"><input type="number" id="anEdad" value="${a.edad_meses || 0}"></div></div>
+      <div class="field"><label>Peso (kg)</label><div class="control"><input type="number" id="anPeso" value="${a.peso || 0}"></div></div>
+      <div class="field"><label>Origen</label><select class="control" id="anOrig">${opt(['compra','nacimiento','otro'], a.origen || 'compra')}</select></div>
+      <div class="field"><label>Fecha de ingreso</label><div class="control"><input type="date" id="anFecha" value="${a.fecha_ingreso || Store.today()}"></div></div>
+    </div>`;
+    this.openModal(id ? 'Editar animal' : 'Registrar animal', body, [
+      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
+      { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: () => {
+        const data = { codigo: $('#anCod').value.trim(), categoria: $('#anCat').value, raza: $('#anRaza').value.trim(),
+          sexo: $('#anSexo').value, edad_meses: +$('#anEdad').value || 0, peso: +$('#anPeso').value || 0,
+          origen: $('#anOrig').value, fecha_ingreso: $('#anFecha').value };
+        id ? Store.updateAnimal(id, data) : Store.addAnimal(data);
+        this.closeModal(); toast('Animal guardado'); this.refresh();
+      } },
+    ]);
+  },
+  killAnimalModal(id) {
+    const a = Store.animals().find(x => x.id === id); if (!a) return;
+    const body = `<p class="sub" style="margin-bottom:16px;color:var(--c-muted)">Registrar baja de <b>${esc(a.codigo || a.categoria)}</b></p>
+      <div class="form-grid">
+        <div class="field"><label>Motivo</label><select class="control" id="kMot">${opt(DEATH_REASONS, 'Enfermedad')}</select></div>
+        <div class="field"><label>Fecha</label><div class="control"><input type="date" id="kFecha" value="${Store.today()}"></div></div>
+      </div>`;
+    this.openModal('Registrar muerte', body, [
+      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
+      { label: 'Registrar muerte', cls: 'btn-danger', icon: 'skull', fn: () => {
+        Store.killAnimal(id, { motivo: $('#kMot').value, fecha: $('#kFecha').value });
+        this.closeModal(); toast('Muerte registrada'); this.refresh();
+      } },
+    ]);
   },
 
   formCompra() {
@@ -289,24 +493,6 @@ const App = {
     this.closeModal(); toast('Compra registrada'); this.refresh();
   },
 
-  // ============================================================
-  //  VENTAS
-  // ============================================================
-  renderVentas() {
-    let h = this.head('Registro de Ventas', 'Gestión de ventas de ganado', 'Nueva Venta', 'trending', () => this.formVenta());
-    const rows = Store.sales().slice().reverse();
-    h += this.panel('Historial de ventas', rows.length ? `<div class="table-wrap"><table class="table">
-      <thead><tr><th>Fecha</th><th>Cliente</th><th>Animales</th><th>Banco</th><th>Método</th><th class="num">Total</th><th></th></tr></thead>
-      <tbody>${rows.map(s => `<tr><td>${fdate(s.fecha)}</td><td>${esc(s.cliente || '—')}</td>
-        <td>${(s.items || []).reduce((a, i) => a + (+i.cantidad || 0), 0)} cab.</td>
-        <td>${esc(Store.bankName(s.bank_id))}</td>
-        <td><span class="badge ${s.metodo_pago === 'Crédito' ? 'pend' : 'off'}">${esc(s.metodo_pago)}</span></td>
-        <td class="num">${money(s.total)}</td>
-        <td class="actions"><button class="iconbtn danger" data-del="${s.id}"><span data-icon="trash" data-size="17"></span></button></td>
-      </tr>`).join('')}</tbody></table></div>` : this.emptyState('trending', 'Sin ventas registradas.'));
-    this.paint('ventas', h);
-    $$('#screen-ventas [data-del]').forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeSale(b.dataset.del)));
-  },
   formVenta() {
     this.formItems = [];
     const banks = Store.banks();
@@ -348,95 +534,119 @@ const App = {
   },
 
   // ============================================================
-  //  GASTOS / INGRESOS (genérico)
+  //  GASTOS PERSONALES
   // ============================================================
-  renderGastos() { this.renderFlow('gastos'); },
-  renderIngresos() { this.renderFlow('ingresos'); },
-  renderFlow(kind) {
-    const isGasto = kind === 'gastos';
-    const data = (isGasto ? Store.expenses() : Store.incomes()).slice().reverse();
-    let h = this.head(isGasto ? 'Gastos' : 'Ingresos',
-      isGasto ? 'Registro de egresos personales y de ganadería' : 'Registro de ingresos personales y de ganadería',
-      isGasto ? 'Nuevo Gasto' : 'Nuevo Ingreso', isGasto ? 'arrowDown' : 'coins', () => this.formFlow(kind));
-    h += this.panel(isGasto ? 'Historial de gastos' : 'Historial de ingresos', data.length ? `<div class="table-wrap"><table class="table">
-      <thead><tr><th>Fecha</th><th>Categoría</th><th>Área</th><th>Banco</th><th>Detalle</th><th class="num">Monto</th><th></th></tr></thead>
-      <tbody>${data.map(x => `<tr><td>${fdate(x.fecha)}</td>
-        <td><span style="display:inline-flex;align-items:center;gap:7px"><span data-icon="${CAT_ICON[x.categoria] || 'dot'}" data-size="17"></span>${esc(x.categoria)}</span></td>
-        <td><span class="badge ${x.domain === 'personal' ? 'per' : 'gan'}">${x.domain === 'personal' ? 'Personal' : 'Ganadería'}</span></td>
-        <td>${esc(Store.bankName(x.bank_id))}</td><td>${esc(x.descripcion || '—')}</td>
-        <td class="num"><span class="pill-amount ${isGasto ? 'expense' : 'income'}">${isGasto ? '−' : '+'} ${money(x.monto)}</span></td>
-        <td class="actions"><button class="iconbtn danger" data-del="${x.id}"><span data-icon="trash" data-size="17"></span></button></td>
-      </tr>`).join('')}</tbody></table></div>` : this.emptyState(isGasto ? 'arrowDown' : 'coins', isGasto ? 'Sin gastos registrados.' : 'Sin ingresos registrados.'));
-    this.paint(kind, h);
-    $$(`#screen-${kind} [data-del]`).forEach(b => b.onclick = () => this.confirmDelete(() =>
-      isGasto ? Store.removeExpense(b.dataset.del) : Store.removeIncome(b.dataset.del)));
-  },
-  formFlow(kind) {
-    const isGasto = kind === 'gastos';
-    const cats = (d) => (isGasto ? GASTO_CATS : INGRESO_CATS)[d];
-    const banks = Store.banks();
-    const body = `<div class="form-grid">
-        <div class="field col-2"><label>Área</label>
-          <div class="chips" id="flDomain">
-            <button class="chip on" data-v="ganaderia"><span data-icon="cow"></span> Ganadería</button>
-            <button class="chip" data-v="personal"><span data-icon="user"></span> Personal</button>
-          </div></div>
-        <div class="field"><label>Monto <span class="req">*</span></label><div class="control"><span class="prefix">Bs</span><input class="amount-big" type="number" id="flMonto" placeholder="0"></div></div>
-        <div class="field"><label>Fecha</label><div class="control"><input type="date" id="flFecha" value="${Store.today()}"></div></div>
-        <div class="field"><label>Categoría</label><select class="control" id="flCat">${opt(cats('ganaderia'))}</select></div>
-        <div class="field"><label>Banco</label><select class="control" id="flBank"><option value="">Ninguno</option>${banks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
-        <div class="field col-2"><label>Detalle</label><div class="control"><input id="flDesc" placeholder="Ej: vacuna aftosa lote 2"></div></div>
-      </div>`;
-    this.openModal(isGasto ? 'Registrar Gasto' : 'Registrar Ingreso', body, [
-      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
-      { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: () => this.saveFlow(kind) },
-    ]);
-    let dom = 'ganaderia';
-    $$('#flDomain .chip').forEach(c => c.onclick = () => {
-      dom = c.dataset.v; $$('#flDomain .chip').forEach(x => x.classList.remove('on')); c.classList.add('on');
-      $('#flCat').innerHTML = opt(cats(dom)); this.injectIcons($('#flDomain'));
-    });
-    this._flowDom = () => dom;
-  },
-  saveFlow(kind) {
-    const isGasto = kind === 'gastos';
-    const monto = +$('#flMonto').value;
-    if (!monto || monto <= 0) return toast('Ingresá un monto válido');
-    const payload = { fecha: $('#flFecha').value, domain: this._flowDom(), categoria: $('#flCat').value,
-      bank_id: $('#flBank').value || null, monto, descripcion: $('#flDesc').value.trim() };
-    isGasto ? Store.addExpense(payload) : Store.addIncome(payload);
-    this.closeModal(); toast(isGasto ? 'Gasto registrado' : 'Ingreso registrado'); this.refresh();
+  renderPersonales() {
+    const rows = Store.expenses().filter(x => x.domain === 'personal').slice().reverse();
+    const total = rows.reduce((s, x) => s + x.monto, 0);
+    let h = this.head('Gastos personales', 'Tus egresos de la vida personal', 'Nuevo gasto', 'arrowDown', () => this.formExpense('personal'));
+    h += this.miniStats([['Total gastado', money(total), 'arrowDown', 'expense'], ['Movimientos', rows.length, 'receipt']]);
+    h += this.panel('Historial de gastos personales', this.expenseTable(rows));
+    this.paint('personales', h);
+    $$('#screen-personales [data-del]').forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeExpense(b.dataset.del)));
   },
 
   // ============================================================
-  //  SALIDAS (cuentas por pagar)
+  //  INGRESOS (unificado: ingresos + ventas de ganado)
   // ============================================================
-  renderSalidas() {
-    let h = this.head('Salidas', 'Gestión de pagos y deudas pendientes', 'Nueva Cuenta', 'receipt', () => this.formSalida());
-    const rows = Store.payables();
-    const totalPagar = rows.filter(p => p.estado !== 'pagado').reduce((s, p) => s + (p.monto_total - p.pagado), 0);
-    const pend = rows.filter(p => p.estado !== 'pagado').length;
-    h += `<div class="stat-grid" style="margin-bottom:22px">
-      <div class="stat"><div class="top"><div class="lbl">Total por Pagar</div><div class="ico"><span data-icon="arrowDown"></span></div></div><div class="val expense">${money(totalPagar)}</div><div class="hint">Pendiente de pagar</div></div>
-      <div class="stat"><div class="top"><div class="lbl">Total Cuentas</div><div class="ico"><span data-icon="receipt"></span></div></div><div class="val">${rows.length}</div><div class="hint">Registros totales</div></div>
-      <div class="stat"><div class="top"><div class="lbl">Cuentas Pendientes</div><div class="ico"><span data-icon="clock"></span></div></div><div class="val warn">${pend}</div><div class="hint">Sin pagar completamente</div></div>
-    </div>`;
-    h += this.panel('Listado de salidas', rows.length ? `<div class="table-wrap"><table class="table">
-      <thead><tr><th>Proveedor</th><th>Descripción</th><th>Área</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Pendiente</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
-      <tbody>${rows.slice().reverse().map(p => `<tr>
-        <td>${esc(p.proveedor || '—')}</td><td>${esc(p.descripcion || '—')}</td>
-        <td><span class="badge ${p.domain === 'personal' ? 'per' : 'gan'}">${p.domain === 'personal' ? 'Personal' : 'Ganadería'}</span></td>
-        <td class="num">${money(p.monto_total)}</td><td class="num">${money(p.pagado)}</td>
-        <td class="num">${money(p.monto_total - p.pagado)}</td><td>${fdate(p.vencimiento)}</td>
-        <td><span class="badge ${p.estado === 'pagado' ? 'ok' : 'pend'}">${p.estado === 'pagado' ? 'Pagado' : 'Pendiente'}</span></td>
-        <td class="actions">
-          ${p.estado !== 'pagado' ? `<button class="iconbtn ok" data-pay="${p.id}" title="Marcar pagado"><span data-icon="check" data-size="17"></span></button>` : ''}
-          <button class="iconbtn danger" data-del="${p.id}"><span data-icon="trash" data-size="17"></span></button></td>
-      </tr>`).join('')}</tbody></table></div>` : this.emptyState('receipt', 'Sin cuentas por pagar.'));
-    this.paint('salidas', h);
-    $$('#screen-salidas [data-pay]').forEach(b => b.onclick = () => { Store.payPayable(b.dataset.pay); toast('Marcado como pagado'); this.refresh(); });
-    $$('#screen-salidas [data-del]').forEach(b => b.onclick = () => this.confirmDelete(() => Store.removePayable(b.dataset.del)));
+  renderIngresos() {
+    const inc = Store.incomes().map(x => ({ k: 'inc', id: x.id, fecha: x.fecha, fuente: x.categoria, area: x.domain,
+      bank: x.bank_id, monto: x.monto, det: x.descripcion || '—', venta: false }));
+    const sal = Store.sales().map(s => ({ k: 'sale', id: s.id, fecha: s.fecha, fuente: 'Venta de ganado' + (s.cliente ? ' — ' + s.cliente : ''),
+      area: 'ganaderia', bank: s.bank_id, monto: s.total, det: (s.items || []).reduce((a, i) => a + (+i.cantidad || 0), 0) + ' cab.', venta: true }));
+    const rows = [...inc, ...sal].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+    const total = rows.reduce((s, r) => s + r.monto, 0);
+    let h = this.head('Ingresos', 'Todo lo que entra — ganadería y personal', 'Nuevo ingreso', 'coins', () => this.formIncome());
+    h += this.miniStats([['Total ingresos', money(total), 'coins', 'income'], ['Movimientos', rows.length, 'receipt']]);
+    h += this.panel('Historial de ingresos', rows.length ? `<div class="table-wrap"><table class="table">
+      <thead><tr><th>Fecha</th><th>Fuente</th><th>Área</th><th>Banco</th><th>Detalle</th><th class="num">Monto</th><th></th></tr></thead>
+      <tbody>${rows.map(r => `<tr><td>${fdate(r.fecha)}</td>
+        <td><span style="display:inline-flex;align-items:center;gap:7px"><span data-icon="${r.venta ? 'cow' : (CAT_ICON[r.fuente] || 'coins')}" data-size="17"></span>${esc(r.fuente)}</span></td>
+        <td><span class="badge ${r.area === 'personal' ? 'per' : 'gan'}">${r.area === 'personal' ? 'Personal' : 'Ganadería'}</span></td>
+        <td>${esc(Store.bankName(r.bank))}</td><td>${esc(r.det)}</td>
+        <td class="num"><span class="pill-amount income">+ ${money(r.monto)}</span></td>
+        <td class="actions"><button class="iconbtn danger" data-${r.k}="${r.id}"><span data-icon="trash" data-size="17"></span></button></td>
+      </tr>`).join('')}</tbody></table></div>` : this.emptyState('coins', 'Sin ingresos. Las ventas de ganado también aparecen acá.'));
+    this.paint('ingresos', h);
+    const root = $('#screen-ingresos');
+    $$('[data-inc]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeIncome(b.dataset.inc)));
+    $$('[data-sale]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeSale(b.dataset.sale)));
   },
+
+  // ----- Formulario de gasto (área fija) -----
+  formExpense(domain) {
+    const cats = GASTO_CATS[domain]; const banks = Store.banks();
+    const label = domain === 'personal' ? 'Gasto personal' : 'Gasto de ganadería';
+    const body = `<div class="form-grid">
+        <div class="field"><label>Monto <span class="req">*</span></label><div class="control"><span class="prefix">Bs</span><input class="amount-big" type="number" id="exMonto" placeholder="0"></div></div>
+        <div class="field"><label>Fecha</label><div class="control"><input type="date" id="exFecha" value="${Store.today()}"></div></div>
+        <div class="field"><label>Categoría</label><select class="control" id="exCat">${opt(cats)}</select></div>
+        <div class="field"><label>Banco</label><select class="control" id="exBank"><option value="">Ninguno</option>${banks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
+        <div class="field col-2"><label>Detalle</label><div class="control"><input id="exDesc" placeholder="Opcional"></div></div>
+      </div>`;
+    this.openModal('Registrar ' + label, body, [
+      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
+      { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: () => {
+        const monto = +$('#exMonto').value; if (!monto || monto <= 0) return toast('Ingresá un monto válido');
+        Store.addExpense({ domain, fecha: $('#exFecha').value, categoria: $('#exCat').value, bank_id: $('#exBank').value || null, monto, descripcion: $('#exDesc').value.trim() });
+        this.closeModal(); toast('Gasto registrado'); this.refresh();
+      } },
+    ]);
+  },
+
+  // ----- Formulario de ingreso (área elegible) -----
+  formIncome() {
+    const banks = Store.banks();
+    const body = `<div class="form-grid">
+        <div class="field col-2"><label>Área</label><div class="chips" id="inDom">
+          <button class="chip on" data-v="ganaderia"><span data-icon="cow"></span> Ganadería</button>
+          <button class="chip" data-v="personal"><span data-icon="user"></span> Personal</button></div></div>
+        <div class="field"><label>Monto <span class="req">*</span></label><div class="control"><span class="prefix">Bs</span><input class="amount-big" type="number" id="inMonto" placeholder="0"></div></div>
+        <div class="field"><label>Fecha</label><div class="control"><input type="date" id="inFecha" value="${Store.today()}"></div></div>
+        <div class="field"><label>Categoría</label><select class="control" id="inCat">${opt(INGRESO_CATS.ganaderia)}</select></div>
+        <div class="field"><label>Banco</label><select class="control" id="inBank"><option value="">Ninguno</option>${banks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
+        <div class="field col-2"><label>Detalle</label><div class="control"><input id="inDesc" placeholder="Opcional"></div></div>
+      </div>`;
+    this.openModal('Registrar Ingreso', body, [
+      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
+      { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: () => {
+        const monto = +$('#inMonto').value; if (!monto || monto <= 0) return toast('Ingresá un monto válido');
+        Store.addIncome({ domain: this._inDom(), fecha: $('#inFecha').value, categoria: $('#inCat').value, bank_id: $('#inBank').value || null, monto, descripcion: $('#inDesc').value.trim() });
+        this.closeModal(); toast('Ingreso registrado'); this.refresh();
+      } },
+    ]);
+    let dom = 'ganaderia';
+    $$('#inDom .chip').forEach(c => c.onclick = () => { dom = c.dataset.v; $$('#inDom .chip').forEach(x => x.classList.remove('on')); c.classList.add('on');
+      $('#inCat').innerHTML = opt(INGRESO_CATS[dom]); this.injectIcons($('#inDom')); });
+    this._inDom = () => dom;
+  },
+
+  // ----- Gasto rápido (botón flotante) -----
+  quickExpense() {
+    const banks = Store.banks();
+    const body = `<p class="sub" style="margin-bottom:16px;color:var(--c-muted)">Registrá un gasto en segundos.</p>
+      <div class="form-grid">
+        <div class="field col-2"><label>¿Qué tipo de gasto?</label><div class="chips" id="qDom">
+          <button class="chip on" data-v="ganaderia"><span data-icon="cow"></span> Ganadería</button>
+          <button class="chip" data-v="personal"><span data-icon="user"></span> Personal</button></div></div>
+        <div class="field"><label>Monto <span class="req">*</span></label><div class="control"><span class="prefix">Bs</span><input class="amount-big" type="number" id="qMonto" placeholder="0" autofocus></div></div>
+        <div class="field"><label>Banco</label><select class="control" id="qBank"><option value="">Efectivo</option>${banks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
+        <div class="field col-2"><label>Categoría</label><select class="control" id="qCat">${opt(GASTO_CATS.ganaderia)}</select></div>
+      </div>`;
+    this.openModal('Gasto rápido', body, [
+      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
+      { label: 'Guardar gasto', cls: 'btn-primary', icon: 'check', fn: () => {
+        const monto = +$('#qMonto').value; if (!monto || monto <= 0) return toast('Ingresá un monto');
+        Store.addExpense({ domain: this._qDom(), fecha: Store.today(), categoria: $('#qCat').value, bank_id: $('#qBank').value || null, monto, descripcion: '' });
+        this.closeModal(); toast('Gasto registrado'); this.refresh();
+      } },
+    ]);
+    let dom = 'ganaderia';
+    $$('#qDom .chip').forEach(c => c.onclick = () => { dom = c.dataset.v; $$('#qDom .chip').forEach(x => x.classList.remove('on')); c.classList.add('on');
+      $('#qCat').innerHTML = opt(GASTO_CATS[dom]); this.injectIcons($('#qDom')); });
+    this._qDom = () => dom;
+  },
+
   formSalida() {
     const body = `<div class="form-grid">
         <div class="field col-2"><label>Área</label>
@@ -467,37 +677,6 @@ const App = {
     this.closeModal(); toast('Cuenta registrada'); this.refresh();
   },
 
-  // ============================================================
-  //  EMPLEADOS
-  // ============================================================
-  renderEmpleados() {
-    let h = this.head('Gestión de Empleados', 'Administración de vaqueros y trabajadores', 'Nuevo Empleado', 'workers', () => this.formEmpleado());
-    const emps = Store.employees();
-    const activos = emps.filter(e => e.estado !== 'inactivo');
-    h += `<div class="stat-grid" style="margin-bottom:22px">
-      <div class="stat"><div class="top"><div class="lbl">Total Empleados</div><div class="ico"><span data-icon="workers"></span></div></div><div class="val">${emps.length}</div></div>
-      <div class="stat"><div class="top"><div class="lbl">Activos</div><div class="ico"><span data-icon="check"></span></div></div><div class="val income">${activos.length}</div></div>
-      <div class="stat"><div class="top"><div class="lbl">Nómina Mensual</div><div class="ico"><span data-icon="coins"></span></div></div><div class="val">${money(Store.nominaMensual())}</div></div>
-    </div>`;
-    h += this.panel('Lista de empleados', emps.length ? `<div class="table-wrap"><table class="table">
-      <thead><tr><th>Nombre</th><th>Documento</th><th>Puesto</th><th>Teléfono</th><th class="num">Salario</th><th>Estado</th><th>Acciones</th></tr></thead>
-      <tbody>${emps.map(e => `<tr>
-        <td><b>${esc(e.nombre)}</b></td><td>${esc(e.documento || '—')}</td><td>${esc(e.puesto)}</td><td>${esc(e.telefono || '—')}</td>
-        <td class="num">${money(e.salario)}</td>
-        <td><span class="badge ${e.estado === 'inactivo' ? 'off' : 'ok'}">${e.estado === 'inactivo' ? 'Inactivo' : 'Activo'}</span></td>
-        <td class="actions">
-          <button class="iconbtn" data-hist="${e.id}" title="Historial"><span data-icon="eye" data-size="17"></span></button>
-          <button class="iconbtn ok" data-pay="${e.id}" title="Registrar pago"><span data-icon="cash" data-size="17"></span></button>
-          <button class="iconbtn" data-edit="${e.id}" title="Editar"><span data-icon="edit" data-size="17"></span></button>
-          <button class="iconbtn danger" data-del="${e.id}" title="Eliminar"><span data-icon="trash" data-size="17"></span></button>
-        </td></tr>`).join('')}</tbody></table></div>` : this.emptyState('workers', 'Sin empleados. Agregá el primero.'));
-    this.paint('empleados', h);
-    const root = $('#screen-empleados');
-    $$('[data-hist]', root).forEach(b => b.onclick = () => this.empleadoHist(b.dataset.hist));
-    $$('[data-pay]', root).forEach(b => b.onclick = () => this.formPagoEmpleado(b.dataset.pay));
-    $$('[data-edit]', root).forEach(b => b.onclick = () => this.formEmpleado(b.dataset.edit));
-    $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeEmployee(b.dataset.del)));
-  },
   formEmpleado(id) {
     const e = id ? Store.employees().find(x => x.id === id) : {};
     const body = `<div class="form-grid">
@@ -593,27 +772,6 @@ const App = {
     win.document.close();
   },
 
-  // ============================================================
-  //  BANCOS
-  // ============================================================
-  renderBancos() {
-    let h = this.head('Bancos', 'Tus cuentas bancarias y efectivo', 'Agregar Banco', 'bank', () => this.formBanco());
-    const banks = Store.banks();
-    h += `<div class="stat-grid">${banks.map(b => `
-      <div class="stat"><div class="top"><div class="lbl">${esc(b.name)}</div>
-        <div class="ico"><span data-icon="bank"></span></div></div>
-        <div class="val">${money(Store.bankBalance(b.id))}</div>
-        <div class="hint">${esc(b.tipo || 'Cuenta')}</div>
-        <div style="margin-top:14px;display:flex;gap:6px">
-          <button class="iconbtn" data-edit="${b.id}"><span data-icon="edit" data-size="16"></span></button>
-          <button class="iconbtn danger" data-del="${b.id}"><span data-icon="trash" data-size="16"></span></button>
-        </div></div>`).join('')}</div>`;
-    if (!banks.length) h += this.emptyState('bank', 'Agregá tu primer banco.');
-    this.paint('bancos', h);
-    const root = $('#screen-bancos');
-    $$('[data-edit]', root).forEach(b => b.onclick = () => this.formBanco(b.dataset.edit));
-    $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeBank(b.dataset.del)));
-  },
   formBanco(id) {
     const b = id ? Store.banks().find(x => x.id === id) : {};
     const body = `<div class="form-grid">
@@ -642,6 +800,20 @@ const App = {
       <div class="theme-grid">${THEMES.map(t => `<div class="theme-card ${t.id === cur ? 'on' : ''}" data-theme="${t.id}">
         <div class="sw-row">${t.sw.map(c => `<span class="sw" style="background:${c}"></span>`).join('')}</div>
         <div class="nm">${t.name}</div></div>`).join('')}</div></div>`;
+
+    // Bancos
+    const banks = Store.banks();
+    h += `<div class="section"><div class="section-title"><span data-icon="bank"></span> Bancos y cuentas
+        <button class="btn btn-primary btn-sm" id="addBank" style="margin-left:auto"><span data-icon="plus"></span> Agregar banco</button></div>
+      <div class="stat-grid">${banks.map(b => `
+        <div class="stat"><div class="top"><div class="lbl">${esc(b.name)}</div><div class="ico"><span data-icon="bank"></span></div></div>
+          <div class="val">${money(Store.bankBalance(b.id))}</div><div class="hint">${esc(b.tipo || 'Cuenta')}</div>
+          <div style="margin-top:14px;display:flex;gap:6px">
+            <button class="iconbtn" data-bedit="${b.id}"><span data-icon="edit" data-size="16"></span></button>
+            <button class="iconbtn danger" data-bdel="${b.id}"><span data-icon="trash" data-size="16"></span></button>
+          </div></div>`).join('')}</div>
+      ${!banks.length ? this.emptyState('bank', 'Agregá tu primer banco.') : ''}</div>`;
+
     h += `<div class="section"><div class="section-title"><span data-icon="download"></span> Datos y ayuda</div>
       <div class="panel"><div class="panel-body" style="padding:18px 22px;display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn btn-ghost" id="btnExport"><span data-icon="download"></span> Exportar datos (JSON)</button>
@@ -654,6 +826,9 @@ const App = {
     this.paint('ajustes', h);
     const root = $('#screen-ajustes');
     $$('.theme-card', root).forEach(c => c.onclick = () => { this.applyTheme(c.dataset.theme); Store.setSetting('theme', c.dataset.theme); this.refresh(); });
+    $('#addBank').onclick = () => this.formBanco();
+    $$('[data-bedit]', root).forEach(b => b.onclick = () => this.formBanco(b.dataset.bedit));
+    $$('[data-bdel]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeBank(b.dataset.bdel)));
     $('#btnExport').onclick = () => this.exportData();
     $('#btnTour').onclick = () => { this.go('dashboard'); setTimeout(() => this.startTour(), 300); };
     $('#btnDemo').onclick = () => { Store.loadDemo(); toast('Datos de ejemplo cargados'); this.go('dashboard'); };
@@ -703,15 +878,12 @@ const App = {
   //  TOUR (globitos de onboarding)
   // ============================================================
   tourSteps: [
-    { go: 'dashboard',  sel: '[data-go="dashboard"]', title: 'Dashboard', text: 'Tu panel financiero: saldo total, lo que tenés por cobrar y por pagar, ventas, compras y el saldo neto proyectado.' },
-    { go: 'dashboard',  sel: '[data-go="compras"]',   title: 'Compras', text: 'Registrá la compra de ganado: proveedor, banco, método de pago y cada animal con su precio.' },
-    { go: 'dashboard',  sel: '[data-go="ventas"]',    title: 'Ventas', text: 'Igual que compras pero para las ventas. El sistema descuenta las cabezas del hato.' },
-    { go: 'dashboard',  sel: '[data-go="gastos"]',    title: 'Gastos', text: 'Cargá gastos de Ganadería o Personales: veterinario, gasolina, comida, etc. Elegís el banco de dónde salió.' },
-    { go: 'dashboard',  sel: '[data-go="ingresos"]',  title: 'Ingresos', text: 'Tus ingresos por leche, carne, o lo que entre — ganadería o personal.' },
-    { go: 'dashboard',  sel: '[data-go="salidas"]',   title: 'Salidas', text: 'Cuentas por pagar: deudas con proveedores, con vencimiento y estado. Marcás cuando pagás.' },
-    { go: 'dashboard',  sel: '[data-go="empleados"]', title: 'Empleados', text: 'Tus vaqueros y trabajadores. Registrás pagos y podés exportar el historial de cada uno en PDF.' },
-    { go: 'dashboard',  sel: '[data-go="bancos"]',    title: 'Bancos', text: 'Agregá los bancos y cuentas que manejás. Cada movimiento se asocia a un banco.' },
-    { go: 'dashboard',  sel: '[data-go="ajustes"]',   title: 'Ajustes', text: 'Cambiá el color del sistema, exportá tus datos o volvé a ver este tour cuando quieras.' },
+    { sel: '[data-go="dashboard"]', title: 'Dashboard', text: 'Tu panel general: saldo, lo que entra y sale, gráficos y un resumen separado de Ganadería y Vida Personal. Todo lo que cargues cae acá.' },
+    { sel: '[data-go="ganaderia"]', title: 'Ganadería', text: 'Todo el campo en un solo lugar: animales (uno por uno, con muertes y motivos), compras, ventas, gastos, empleados y deudas.' },
+    { sel: '[data-go="personales"]', title: 'Gastos personales', text: 'Tus egresos personales, separados de la ganadería: comida, salud, transporte, vivienda, etc.' },
+    { sel: '[data-go="ingresos"]', title: 'Ingresos', text: 'Todo lo que entra, ganadería y personal juntos. Las ventas de ganado aparecen acá automáticamente.' },
+    { sel: '#fabQuick', title: 'Gasto rápido', text: 'Este botón está siempre a mano: cargás un gasto en segundos — área, monto y banco. Ideal para el día a día.' },
+    { sel: '#btnSettings', title: 'Ajustes', text: 'Tus bancos, el color del sistema, exportar datos o volver a ver este tour cuando quieras.' },
   ],
   tourIndex: 0,
   startTour() {
@@ -739,10 +911,20 @@ const App = {
         <button class="btn btn-primary btn-sm" id="tourNext">${last ? 'Listo' : 'Siguiente'}</button>
       </div></div>`;
     this.injectIcons(pop);
-    // Posición del popup: a la derecha del item (o abajo en mobile)
+    // Posición del popup, clamp para que no se salga de pantalla
     const isMobile = window.innerWidth <= 900;
-    if (isMobile) { pop.style.left = '16px'; pop.style.right = '16px'; pop.style.top = (r.bottom + 14) + 'px'; pop.style.maxWidth = 'none'; }
-    else { pop.style.left = (r.right + 18) + 'px'; pop.style.top = Math.max(16, r.top) + 'px'; pop.style.right = 'auto'; pop.style.maxWidth = '300px'; }
+    if (isMobile) {
+      pop.style.left = '16px'; pop.style.right = '16px'; pop.style.maxWidth = 'none';
+      const below = r.bottom + 14, ph = pop.offsetHeight || 180;
+      pop.style.top = (below + ph > window.innerHeight - 12 ? Math.max(12, r.top - ph - 14) : below) + 'px';
+    } else {
+      const pw = 300, ph = pop.offsetHeight || 190; pop.style.right = 'auto'; pop.style.maxWidth = pw + 'px';
+      let left = r.right + 18;
+      if (left + pw > window.innerWidth - 12) left = r.left - pw - 18;   // a la izquierda si no entra
+      if (left < 12) left = Math.max(12, (window.innerWidth - pw) / 2);  // centrado si tampoco
+      let top = Math.min(Math.max(16, r.top), window.innerHeight - ph - 16);
+      pop.style.left = left + 'px'; pop.style.top = top + 'px';
+    }
     $('#tourSkip').onclick = () => this.endTour();
     $('#tourNext').onclick = () => { if (last) this.endTour(); else { this.tourIndex++; this.showTourStep(); } };
   },
