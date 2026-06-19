@@ -1,62 +1,71 @@
 /* ============================================================
-   sync.js — Sincronización con Supabase (offline-first)
-   Se activa SÓLO cuando config.js tiene una anonKey.
-   Empuja la cola de cambios local y baja los datos del servidor.
+   sync.js — Backend Supabase (auth + sync de documento único)
+   - SIN anonKey en config.js  -> modo 100% local (no hace nada).
+   - CON anonKey -> login Google/email + sincroniza todo el estado.
+   El estado completo (Store.snapshot) se guarda en user_data.data.
    ============================================================ */
 
 (function () {
   const cfg = window.SUPA_CONFIG || {};
   window.SUPA_READY = false;
 
-  if (!cfg.anonKey) {
-    // Sin key todavía: la app sigue 100% local. No hacemos nada.
-    console.info('[sync] Supabase no configurado — modo local.');
-    return;
-  }
+  if (!cfg.anonKey) { console.info('[sync] Sin anonKey — modo local.'); return; }
 
-  // Cargar supabase-js desde CDN (cacheado por el SW tras la 1ª vez)
   const s = document.createElement('script');
   s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
   s.onload = init;
   s.onerror = () => console.warn('[sync] No se pudo cargar supabase-js (offline).');
   document.head.appendChild(s);
 
-  let sb = null;
-  const SYNC = 'dyck.syncqueue.v1';
+  let sb = null, pushTimer = null, pulling = false, uid = null;
 
   async function init() {
-    sb = window.supabase.createClient(cfg.url, cfg.anonKey);
-    // TODO (cuando armemos el login): manejar sesión email/contraseña.
+    sb = window.supabase.createClient(cfg.url, cfg.anonKey, { auth: { persistSession: true, detectSessionInUrl: true } });
+    window.Sync = {
+      ready: true,
+      signInPassword: (email, password) => sb.auth.signInWithPassword({ email, password }),
+      signUp: (email, password) => sb.auth.signUp({ email, password }),
+      signInGoogle: () => sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.href.split('#')[0] } }),
+      signOut: () => sb.auth.signOut(),
+    };
+    sb.auth.onAuthStateChange((_e, session) => handleSession(session));
     const { data: { session } } = await sb.auth.getSession();
-    if (!session) {
-      console.info('[sync] Sin sesión — mostrar login antes de sincronizar.');
-      return;
-    }
-    window.SUPA_READY = true;
-    window.dispatchEvent(new CustomEvent('store:changed'));
-    await flushQueue();
-    window.addEventListener('online', flushQueue);
-    window.addEventListener('store:changed', () => navigator.onLine && flushQueue());
+    handleSession(session);
   }
 
-  // Empuja la cola de cambios pendientes al servidor
-  async function flushQueue() {
-    if (!sb || !navigator.onLine) return;
-    let q = [];
-    try { q = JSON.parse(localStorage.getItem(SYNC) || '[]'); } catch (e) { return; }
-    if (!q.length) return;
+  async function handleSession(session) {
+    if (!session || !session.user) { window.SUPA_READY = false; uid = null; return; }
+    uid = session.user.id;
+    window.SUPA_READY = true;
+    const u = session.user;
+    Store.setSetting('user', { name: u.user_metadata?.full_name || u.user_metadata?.name || u.email, email: u.email, via: 'supabase', id: uid });
+    await pull();
+    if (window.App) App.enterApp();
+    window.removeEventListener('store:changed', schedulePush);
+    window.addEventListener('store:changed', schedulePush);
+    window.addEventListener('online', () => push());
+  }
 
-    const rest = [];
-    for (const item of q) {
-      try {
-        if (item.op === 'insert') await sb.from(item.table).upsert(item.row);
-        else if (item.op === 'update') await sb.from(item.table).update(item.row).eq('id', item.row.id);
-        else if (item.op === 'delete') await sb.from(item.table).delete().eq('id', item.row.id);
-      } catch (e) {
-        rest.push(item); // reintentar luego
+  async function pull() {
+    pulling = true;
+    try {
+      const { data, error } = await sb.from('user_data').select('data').eq('user_id', uid).maybeSingle();
+      if (error) throw error;
+      if (data && data.data && Object.keys(data.data).length) {
+        Store.loadSnapshot(data.data);           // el servidor manda
+      } else {
+        await push(true);                         // primera vez: subo lo local
       }
-    }
-    localStorage.setItem(SYNC, JSON.stringify(rest));
-    console.info(`[sync] ${q.length - rest.length} cambios subidos, ${rest.length} pendientes.`);
+    } catch (e) { console.warn('[sync] pull', e.message || e); }
+    pulling = false;
+  }
+
+  function schedulePush() { if (pulling || !window.SUPA_READY) return; clearTimeout(pushTimer); pushTimer = setTimeout(() => push(), 1200); }
+
+  async function push() {
+    if (!sb || !window.SUPA_READY || !uid || !navigator.onLine) return;
+    try {
+      await sb.from('user_data').upsert({ user_id: uid, data: Store.snapshot(), updated_at: new Date().toISOString() });
+    } catch (e) { console.warn('[sync] push', e.message || e); }
   }
 })();

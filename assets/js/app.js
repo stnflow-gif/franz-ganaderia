@@ -61,12 +61,27 @@ const App = {
   },
 
   bindGlobal() {
-    $('#btnGoogle').onclick = () => this.login('Franz Dyck', 'franz@dyckmanantial.com', 'Google');
-    $('#btnLogin').onclick = () => {
-      const email = $('#logEmail').value.trim() || 'franz@dyckmanantial.com';
-      this.login('Franz Dyck', email, 'email');
+    const supaConfigured = () => !!(window.SUPA_CONFIG && window.SUPA_CONFIG.anonKey);
+    $('#btnGoogle').onclick = () => {
+      if (window.Sync) { $('#loginNote').textContent = 'Abriendo Google…'; window.Sync.signInGoogle(); }
+      else if (supaConfigured()) toast('Conectando con el servidor, probá de nuevo en un segundo…');
+      else this.login('Franz Dyck', 'franz@dyckmanantial.com', 'Google');
     };
-    $('#btnLogout').onclick = () => { Store.setSetting('user', null); location.reload(); };
+    $('#btnLogin').onclick = async () => {
+      const email = $('#logEmail').value.trim(), pass = $('#logPass').value;
+      if (window.Sync) {
+        if (!email || !pass) return toast('Ingresá email y contraseña');
+        $('#loginNote').textContent = 'Entrando…';
+        let r = await window.Sync.signInPassword(email, pass);
+        if (r.error) {                                  // si no existe, crear cuenta
+          r = await window.Sync.signUp(email, pass);
+          if (r.error) { $('#loginNote').textContent = r.error.message; return; }
+          $('#loginNote').textContent = 'Cuenta creada. Si te pide confirmar el email, revisá tu correo.';
+        }
+      } else if (supaConfigured()) { toast('Conectando con el servidor, probá de nuevo en un segundo…'); }
+      else { this.login('Franz Dyck', email || 'franz@dyckmanantial.com', 'email'); }
+    };
+    $('#btnLogout').onclick = async () => { if (window.Sync) { try { await window.Sync.signOut(); } catch (e) {} } Store.setSetting('user', null); location.reload(); };
     $$('#nav button, #btnSettings').forEach(b => b.onclick = () => { this.go(b.dataset.go); this.closeDrawer(); });
     $('#fabQuick').onclick = () => this.quickExpense();
     $('#ham').onclick = () => $('#sidebar').classList.toggle('open') | $('#scrim').classList.toggle('open');
@@ -144,13 +159,13 @@ const App = {
         <div class="hint">Saldo total + cuentas por cobrar − cuentas por pagar</div></div>
     </div>`;
 
-    // ----- Gráfico: ingresos vs egresos por mes -----
+    // ----- Gráfico: ingresos vs salidas por mes -----
     const serie = Store.monthlySeries(6);
-    h += `<div class="section"><div class="section-title"><span data-icon="chart"></span> Ingresos vs Egresos (últimos 6 meses)</div>
+    h += `<div class="section"><div class="section-title"><span data-icon="chart"></span> Ingresos vs Salidas (últimos 6 meses)</div>
       <div class="panel"><div class="panel-body" style="padding:22px">
         <div class="chart-legend">
           <span><i class="dotc gold"></i> Ingresos</span>
-          <span><i class="dotc dark"></i> Egresos</span>
+          <span><i class="dotc dark"></i> Salidas</span>
         </div>
         ${this.barChart(serie)}
       </div></div></div>`;
@@ -171,7 +186,7 @@ const App = {
     this.paint('dashboard', h);
   },
 
-  // Gráfico de barras SVG (ingresos vs egresos)
+  // Gráfico de barras SVG (ingresos vs salidas)
   barChart(serie) {
     const max = Math.max(1, ...serie.flatMap(s => [s.ingreso, s.egreso]));
     const W = 720, H = 220, pad = 28, bw = 16, gap = 6;
@@ -204,16 +219,16 @@ const App = {
       <div class="col-head"><span class="ic-box" data-icon="${ic}"></span><h3>${esc(title)}</h3></div>
       <div class="col-stats">
         <div><span class="k">Ingresos</span><span class="v income">${money(d.ingreso)}</span></div>
-        <div><span class="k">Egresos</span><span class="v expense">${money(d.egreso)}</span></div>
+        <div><span class="k">Salidas</span><span class="v expense">${money(d.egreso)}</span></div>
         <div><span class="k">Balance</span><span class="v ${d.balance >= 0 ? 'gold' : 'expense'}">${money(d.balance)}</span></div>
       </div>
       <div class="col-cats">
-        <div class="cc-title">Desglose de egresos</div>
+        <div class="cc-title">Desglose de salidas</div>
         ${cats.length ? cats.map(c => `
           <div class="cat-row">
             <div class="cat-top"><span><span data-icon="${CAT_ICON[c.cat] || 'dot'}" data-size="15"></span> ${esc(c.cat)}</span><b>${money(c.monto)}</b></div>
             <div class="cat-track"><div class="cat-fill" style="width:${Math.max(4, (c.monto / maxCat) * 100)}%"></div></div>
-          </div>`).join('') : `<div class="empty" style="padding:18px">Sin egresos en esta área.</div>`}
+          </div>`).join('') : `<div class="empty" style="padding:18px">Sin salidas en esta área.</div>`}
       </div>
     </div>`;
   },
@@ -259,7 +274,7 @@ const App = {
       ['Cabezas vivas', Store.headCount(), 'cow', '', 'Animales activos'],
       ['Muertes', Store.deaths().length, 'skull', 'expense', 'Total registradas'],
       ['Ingresos ganadería', money(f.ingreso), 'coins', 'income', 'Ventas + otros'],
-      ['Egresos ganadería', money(f.egreso), 'arrowDown', 'expense', 'Compras, gastos, salarios'],
+      ['Salidas ganadería', money(f.egreso), 'arrowDown', 'expense', 'Compras, gastos, salarios'],
     ]);
     h += this.panel('Muertes por motivo', reasons.length ? `<div style="padding:8px 22px 18px">${reasons.map(r => `
         <div class="cat-row"><div class="cat-top"><span><span data-icon="skull" data-size="15"></span> ${esc(r.motivo)}</span><b>${r.n}</b></div>
@@ -540,7 +555,7 @@ const App = {
   renderPersonales() {
     const rows = Store.expenses().filter(x => x.domain === 'personal').slice().reverse();
     const total = rows.reduce((s, x) => s + x.monto, 0);
-    let h = this.head('Gastos personales', 'Tus egresos de la vida personal', 'Nuevo gasto', 'arrowDown', () => this.formExpense('personal'));
+    let h = this.head('Gastos personales', 'Tus salidas de la vida personal', 'Nuevo gasto', 'arrowDown', () => this.formExpense('personal'));
     h += this.miniStats([['Total gastado', money(total), 'arrowDown', 'expense'], ['Movimientos', rows.length, 'receipt']]);
     h += this.panel('Historial de gastos personales', this.expenseTable(rows));
     this.paint('personales', h);
@@ -881,7 +896,7 @@ const App = {
   tourSteps: [
     { sel: '[data-go="dashboard"]', title: 'Dashboard', text: 'Tu panel general: saldo, lo que entra y sale, gráficos y un resumen separado de Ganadería y Vida Personal. Todo lo que cargues cae acá.' },
     { sel: '[data-go="ganaderia"]', title: 'Ganadería', text: 'Todo el campo en un solo lugar: animales (uno por uno, con muertes y motivos), compras, ventas, gastos, empleados y deudas.' },
-    { sel: '[data-go="personales"]', title: 'Gastos personales', text: 'Tus egresos personales, separados de la ganadería: comida, salud, transporte, vivienda, etc.' },
+    { sel: '[data-go="personales"]', title: 'Gastos personales', text: 'Tus salidas personales, separados de la ganadería: comida, salud, transporte, vivienda, etc.' },
     { sel: '[data-go="ingresos"]', title: 'Ingresos', text: 'Todo lo que entra, ganadería y personal juntos. Las ventas de ganado aparecen acá automáticamente.' },
     { sel: '#fabQuick', title: 'Gasto rápido', text: 'Este botón está siempre a mano: cargás un gasto en segundos — área, monto y banco. Ideal para el día a día.' },
     { sel: '#btnSettings', title: 'Ajustes', text: 'Tus bancos, el color del sistema, exportar datos o volver a ver este tour cuando quieras.' },

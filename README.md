@@ -20,23 +20,33 @@ manifest.webmanifest    # PWA instalable
 supabase/migrations/0001_init.sql  # esquema de la base
 ```
 
-## Puesta en marcha del backend (paso a paso)
+## Activar el backend (paso a paso)
 
-### 1. Crear las tablas
-Supabase → **SQL Editor** → New query → pegá TODO el contenido de
-`supabase/migrations/0001_init.sql` → **Run**.
+El backend usa **un documento JSON por usuario** (tabla `user_data`). Sincroniza
+TODO el estado (animales, compras, ventas, gastos, ingresos, deudas, empleados,
+bancos, ajustes) entre dispositivos. Mientras `anonKey` esté vacío, la app sigue
+funcionando 100% local.
 
-### 2. Conseguir la anon key
-Supabase → **Settings → API** → copiá la **`anon` / publishable key**
-(NO la `service_role`). Pegala en `assets/js/config.js` → `anonKey`.
+### 1. Crear la tabla
+Supabase → **SQL Editor** → New query → pegá TODO `supabase/migrations/0002_user_data.sql` → **Run**.
 
-### 3. 🔴 Rotar la service_role key
-La service_role que se compartió quedó expuesta. Supabase → **Settings → API** →
-**Roll** la `service_role key`. No va nunca en el frontend.
+### 2. Pegar la anon key
+Supabase → **Settings → API** → copiá la **`anon` / publishable key** (NO la
+`service_role`) → pegala en `assets/js/config.js` → `anonKey`. Con eso ya anda
+el login con email/contraseña y la sincronización.
 
-### 4. (futuro) Login
-La pantalla de login email/contraseña está lista en el HTML; falta cablear
-`sync.js` con `sb.auth.signInWithPassword` cuando definamos el alta de Franz.
+### 3. Activar Google (opcional pero pedido)
+Supabase → **Authentication → Providers → Google** → activar y pegar el
+**Client ID/Secret** de un OAuth de Google Cloud. En **URL Configuration**
+agregar la URL del sitio (Cloudflare Pages) como *Site URL* y *Redirect URL*.
+El botón "Iniciar sesión con Google" ya está cableado (`sync.js`).
+
+### 4. 🔴 Rotar la service_role key
+La service_role que se compartió en el chat quedó expuesta. Supabase →
+**Settings → API** → **Roll** la `service_role key`. No va nunca en el frontend.
+
+> El esquema detallado por tablas (`0001_init.sql`) queda como referencia para
+> reportes/BI a futuro; la app hoy usa el documento único de `0002`.
 
 ## Empaquetar como APK (sin Play Store)
 1. Subir a **Cloudflare Pages** (gratis).

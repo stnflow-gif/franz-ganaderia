@@ -221,6 +221,10 @@ const Store = (() => {
     syncQueueSize() { try { return JSON.parse(localStorage.getItem(SYNC) || '[]').length; } catch (e) { return 0; } },
     exportJSON: () => JSON.stringify(db, null, 2),
 
+    // Snapshot completo para sincronizar con el servidor
+    snapshot: () => db,
+    loadSnapshot(obj) { if (obj && typeof obj === 'object') { db = migrate(obj); save(); window.dispatchEvent(new CustomEvent('store:changed')); } },
+
     // Reiniciar todo (deja sólo bancos/ajustes por defecto, conserva tema y usuario)
     reset() {
       const keepTheme = db.settings.theme, keepUser = db.settings.user;
