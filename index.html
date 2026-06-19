@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=10">
+  <link rel="stylesheet" href="assets/css/app.css?v=11">
 </head>
 <body>
 
@@ -37,7 +37,7 @@
       <nav class="nav" id="nav">
         <button class="on" data-go="dashboard"><span class="ic-box" data-icon="home"></span><span class="lbl">Dashboard<small>Resumen general</small></span></button>
         <button data-go="ganaderia"><span class="ic-box" data-icon="cow"></span><span class="lbl">Ganadería<small>Operación del campo</small></span></button>
-        <button data-go="personales"><span class="ic-box" data-icon="arrowDown"></span><span class="lbl">Gastos personales<small>Tus egresos</small></span></button>
+        <button data-go="personales"><span class="ic-box" data-icon="arrowDown"></span><span class="lbl">Gastos personales<small>Tus salidas</small></span></button>
         <button data-go="ingresos"><span class="ic-box" data-icon="coins"></span><span class="lbl">Ingresos<small>Todo lo que entra</small></span></button>
       </nav>
       <div class="foot">
@@ -90,11 +90,11 @@
 
   <div id="toast"></div>
 
-  <script src="assets/js/config.js?v=10"></script>
-  <script src="assets/js/icons.js?v=10"></script>
-  <script src="assets/js/store.js?v=10"></script>
-  <script src="assets/js/app.js?v=10"></script>
-  <script src="assets/js/sync.js?v=10"></script>
+  <script src="assets/js/config.js?v=11"></script>
+  <script src="assets/js/icons.js?v=11"></script>
+  <script src="assets/js/store.js?v=11"></script>
+  <script src="assets/js/app.js?v=11"></script>
+  <script src="assets/js/sync.js?v=11"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));

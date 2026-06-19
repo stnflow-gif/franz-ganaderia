@@ -188,16 +188,16 @@ const App = {
 
   // Gráfico de barras SVG (ingresos vs salidas)
   barChart(serie) {
-    const max = Math.max(1, ...serie.flatMap(s => [s.ingreso, s.egreso]));
+    const max = Math.max(1, ...serie.flatMap(s => [s.ingreso, s.salida]));
     const W = 720, H = 220, pad = 28, bw = 16, gap = 6;
     const n = serie.length;
     const slot = (W - pad * 2) / n;
     const y = v => H - pad - (v / max) * (H - pad * 2);
-    const allZero = serie.every(s => !s.ingreso && !s.egreso);
+    const allZero = serie.every(s => !s.ingreso && !s.salida);
     const bars = serie.map((s, i) => {
       const cx = pad + slot * i + slot / 2;
       const x1 = cx - bw - gap / 2, x2 = cx + gap / 2;
-      const yi = y(s.ingreso), ye = y(s.egreso);
+      const yi = y(s.ingreso), ye = y(s.salida);
       return `
         <rect x="${x1}" y="${yi}" width="${bw}" height="${H - pad - yi}" rx="4" fill="var(--c-gold)"></rect>
         <rect x="${x2}" y="${ye}" width="${bw}" height="${H - pad - ye}" rx="4" fill="var(--c-text)" opacity=".82"></rect>
@@ -219,7 +219,7 @@ const App = {
       <div class="col-head"><span class="ic-box" data-icon="${ic}"></span><h3>${esc(title)}</h3></div>
       <div class="col-stats">
         <div><span class="k">Ingresos</span><span class="v income">${money(d.ingreso)}</span></div>
-        <div><span class="k">Salidas</span><span class="v expense">${money(d.egreso)}</span></div>
+        <div><span class="k">Salidas</span><span class="v expense">${money(d.salida)}</span></div>
         <div><span class="k">Balance</span><span class="v ${d.balance >= 0 ? 'gold' : 'expense'}">${money(d.balance)}</span></div>
       </div>
       <div class="col-cats">
@@ -274,7 +274,7 @@ const App = {
       ['Cabezas vivas', Store.headCount(), 'cow', '', 'Animales activos'],
       ['Muertes', Store.deaths().length, 'skull', 'expense', 'Total registradas'],
       ['Ingresos ganadería', money(f.ingreso), 'coins', 'income', 'Ventas + otros'],
-      ['Salidas ganadería', money(f.egreso), 'arrowDown', 'expense', 'Compras, gastos, salarios'],
+      ['Salidas ganadería', money(f.salida), 'arrowDown', 'expense', 'Compras, gastos, salarios'],
     ]);
     h += this.panel('Muertes por motivo', reasons.length ? `<div style="padding:8px 22px 18px">${reasons.map(r => `
         <div class="cat-row"><div class="cat-top"><span><span data-icon="skull" data-size="15"></span> ${esc(r.motivo)}</span><b>${r.n}</b></div>
