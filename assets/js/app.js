@@ -7,6 +7,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 // ---------- Listas de referencia ----------
 const THEMES = [
+  { id: 'glass',     name: 'Vidrio (oro)', sw: ['#1a1610', '#dcba5e', '#d8cfbc'] },
   { id: 'oro-claro', name: 'Oro claro',   sw: ['#f7f5f1', '#121110', '#c8a44d'] },
   { id: 'oro-noche', name: 'Oro noche',   sw: ['#0d0c0a', '#d8b450', '#f6f2e9'] },
   { id: 'marfil',    name: 'Marfil',      sw: ['#ffffff', '#1c1a14', '#c8a44d'] },
@@ -48,8 +49,8 @@ const App = {
 
   init() {
     // Si el tema guardado ya no existe (paletas viejas), volver al dorado por defecto
-    if (!THEMES.some(t => t.id === Store.settings().theme)) Store.setSetting('theme', 'oro-claro');
-    this.applyTheme(Store.settings().theme || 'oro-claro');
+    if (!THEMES.some(t => t.id === Store.settings().theme)) Store.setSetting('theme', 'glass');
+    this.applyTheme(Store.settings().theme || 'glass');
     this.injectIcons();
     this.bindGlobal();
     if (Store.settings().user) this.enterApp(); else this.showLogin();
@@ -81,10 +82,10 @@ const App = {
     Store.setSetting('user', { name, email, via });
     this.enterApp();
   },
-  showLogin() { $('#loginScreen').classList.remove('hidden'); $('#shell').classList.add('hidden'); },
+  showLogin() { $('#loginScreen').classList.remove('hidden'); $('#shell').classList.add('hidden'); $('#fabQuick').classList.add('hidden'); },
   enterApp() {
     const u = Store.settings().user || { name: 'Franz Dyck', email: 'modo local' };
-    $('#loginScreen').classList.add('hidden'); $('#shell').classList.remove('hidden');
+    $('#loginScreen').classList.add('hidden'); $('#shell').classList.remove('hidden'); $('#fabQuick').classList.remove('hidden');
     $('#userName').textContent = u.name; $('#userEmail').textContent = u.email;
     $('#userAv').textContent = (u.name || 'F').charAt(0).toUpperCase();
     this.go('dashboard');
