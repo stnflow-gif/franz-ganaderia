@@ -23,6 +23,7 @@ const Store = (() => {
     expenses: [],      // {id, fecha, domain, categoria, bank_id, monto, descripcion}
     incomes: [],       // {id, fecha, domain, categoria, bank_id, monto, descripcion}
     payables: [],      // {id, fecha, proveedor, descripcion, domain, monto_total, pagado, vencimiento, estado}
+    recurring: [],     // {id, tipo:'gasto', domain, categoria, nombre, monto, bank_id, dia, active, paid:{'YYYY-MM':expenseId}}
     settings: { theme: 'glass', currency: 'Bs', onboarded: false, user: null },
   });
 
@@ -71,9 +72,13 @@ const Store = (() => {
     removeEmployee(id) { db.employees = db.employees.filter(e => e.id !== id); commit('delete', 'employees', { id }); },
     toggleEmployee(id) { const e = db.employees.find(x => x.id === id); if (e) { e.estado = e.estado === 'inactivo' ? 'activo' : 'inactivo'; commit('update', 'employees', e); } },
     payEmployee(id, p) { const e = db.employees.find(x => x.id === id); if (!e) return;
-      e.pagos.push({ id: uid(), fecha: p.fecha || today(), monto: +p.monto || 0, concepto: p.concepto || 'Salario', bank_id: p.bank_id || null });
+      e.pagos.push({ id: uid(), fecha: p.fecha || today(), monto: +p.monto || 0, concepto: p.concepto || 'Salario',
+        bank_id: p.bank_id || null, comprobante: p.comprobante || null });
       commit('update', 'employees', e); },
     nominaMensual: () => sum(db.employees.filter(e => e.estado !== 'inactivo'), e => e.salario),
+    // ¿Se le pagó el sueldo a este empleado en el mes dado? (devuelve el pago o null)
+    employeePaidIn(id, month) { const e = db.employees.find(x => x.id === id); if (!e) return null;
+      return (e.pagos || []).find(p => (p.fecha || '').slice(0, 7) === month) || null; },
 
     // ---------- Compras ----------
     purchases: () => db.purchases,
@@ -102,14 +107,16 @@ const Store = (() => {
     // ---------- Gastos ----------
     expenses: () => db.expenses,
     addExpense(g) { const row = { id: uid(), fecha: g.fecha || today(), domain: g.domain || 'ganaderia',
-      categoria: g.categoria || 'Otros', bank_id: g.bank_id || null, monto: +g.monto || 0, descripcion: g.descripcion || '', created_at: now() };
+      categoria: g.categoria || 'Otros', bank_id: g.bank_id || null, monto: +g.monto || 0, descripcion: g.descripcion || '',
+      comprobante: g.comprobante || null, recurring_id: g.recurring_id || null, created_at: now() };
       db.expenses.push(row); commit('insert', 'expenses', row); return row; },
     removeExpense(id) { db.expenses = db.expenses.filter(x => x.id !== id); commit('delete', 'expenses', { id }); },
 
     // ---------- Ingresos ----------
     incomes: () => db.incomes,
     addIncome(i) { const row = { id: uid(), fecha: i.fecha || today(), domain: i.domain || 'ganaderia',
-      categoria: i.categoria || 'Otros', bank_id: i.bank_id || null, monto: +i.monto || 0, descripcion: i.descripcion || '', created_at: now() };
+      categoria: i.categoria || 'Otros', bank_id: i.bank_id || null, monto: +i.monto || 0, descripcion: i.descripcion || '',
+      comprobante: i.comprobante || null, created_at: now() };
       db.incomes.push(row); commit('insert', 'incomes', row); return row; },
     removeIncome(id) { db.incomes = db.incomes.filter(x => x.id !== id); commit('delete', 'incomes', { id }); },
 
@@ -123,6 +130,28 @@ const Store = (() => {
       p.pagado = Math.min(p.monto_total, (+p.pagado || 0) + (+monto || p.monto_total - p.pagado));
       p.estado = p.pagado >= p.monto_total ? 'pagado' : 'pendiente'; commit('update', 'payables', p); },
     removePayable(id) { db.payables = db.payables.filter(x => x.id !== id); commit('delete', 'payables', { id }); },
+
+    // ---------- Gastos fijos / recurrentes ----------
+    // Se repiten cada mes y se "cuentan para el próximo mes". Marcar pagado genera el gasto real del mes.
+    recurring: (domain) => db.recurring.filter(r => r.active !== false && (!domain || r.domain === domain)),
+    addRecurring(r) { const row = { id: uid(), tipo: 'gasto', domain: r.domain || 'ganaderia', categoria: r.categoria || 'Otros',
+      nombre: r.nombre || r.categoria || 'Gasto fijo', monto: +r.monto || 0, bank_id: r.bank_id || null, dia: +r.dia || 1,
+      active: true, paid: {}, created_at: now() };
+      db.recurring.push(row); commit('insert', 'recurring', row); return row; },
+    updateRecurring(id, patch) { const r = db.recurring.find(x => x.id === id); if (r) { Object.assign(r, patch); commit('update', 'recurring', r); } },
+    removeRecurring(id) { db.recurring = db.recurring.filter(r => r.id !== id); commit('delete', 'recurring', { id }); },
+    recurringPaidIn(id, month) { const r = db.recurring.find(x => x.id === id); return !!(r && r.paid && r.paid[month]); },
+    // Marca un fijo como pagado en el mes: genera el gasto real y guarda el vínculo.
+    markRecurringPaid(id, month, opts = {}) {
+      const r = db.recurring.find(x => x.id === id); if (!r || (r.paid && r.paid[month])) return;
+      const fecha = month + '-' + String(opts.dia || r.dia || 1).padStart(2, '0');
+      const exp = this.addExpense({ domain: r.domain, categoria: r.categoria, bank_id: opts.bank_id ?? r.bank_id,
+        monto: r.monto, descripcion: r.nombre + ' (fijo)', comprobante: opts.comprobante || null, recurring_id: r.id, fecha });
+      r.paid = r.paid || {}; r.paid[month] = exp.id; commit('update', 'recurring', r);
+    },
+    unmarkRecurringPaid(id, month) { const r = db.recurring.find(x => x.id === id); if (!r || !r.paid || !r.paid[month]) return;
+      const expId = r.paid[month]; this.removeExpense(expId); delete r.paid[month]; commit('update', 'recurring', r); },
+    recurringMonthlyTotal: (domain) => sum(db.recurring.filter(r => r.active !== false && (!domain || r.domain === domain)), r => r.monto),
 
     // ---------- Animales (registro individual del hato) ----------
     animals: () => db.animals,

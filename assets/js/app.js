@@ -48,7 +48,8 @@ const App = {
   formItems: [],
 
   init() {
-    // Si el tema guardado ya no existe (paletas viejas), volver al dorado por defecto
+    // Migración una sola vez al tema vidrio (nuevo default); luego el usuario puede cambiarlo
+    if (!Store.settings().glassMigrated) { Store.setSetting('theme', 'glass'); Store.setSetting('glassMigrated', true); }
     if (!THEMES.some(t => t.id === Store.settings().theme)) Store.setSetting('theme', 'glass');
     this.applyTheme(Store.settings().theme || 'glass');
     this.injectIcons();
@@ -240,7 +241,7 @@ const App = {
     if (!this.ganTab) this.ganTab = 'resumen';
     const t = this.ganTab;
     const tabs = [['resumen','Resumen','chart'],['animales','Animales','cow'],['compras','Compras','cart'],
-      ['ventas','Ventas','trending'],['gastos','Gastos','arrowDown'],['empleados','Empleados','workers'],['deudas','Deudas','receipt']];
+      ['ventas','Ventas','trending'],['gastos','Gastos','arrowDown'],['fijos','Fijos','clock'],['empleados','Empleados','workers'],['deudas','Deudas','receipt']];
     let h = this.head('Ganadería', 'Operación del campo');
     h += `<div class="subtabs">${tabs.map(([k, l, ic]) =>
       `<button class="subtab ${k === t ? 'on' : ''}" data-sub="${k}"><span data-icon="${ic}" data-size="17"></span> ${l}</button>`).join('')}</div>`;
@@ -350,7 +351,9 @@ const App = {
         <td><span style="display:inline-flex;align-items:center;gap:7px"><span data-icon="${CAT_ICON[x.categoria] || 'dot'}" data-size="17"></span>${esc(x.categoria)}</span></td>
         <td>${esc(Store.bankName(x.bank_id))}</td><td>${esc(x.descripcion || '—')}</td>
         <td class="num"><span class="pill-amount expense">− ${money(x.monto)}</span></td>
-        <td class="actions"><button class="iconbtn danger" data-del="${x.id}"><span data-icon="trash" data-size="17"></span></button></td>
+        <td class="actions">
+          ${x.comprobante ? `<button class="iconbtn" data-vcexp="${x.id}" title="Ver comprobante"><span data-icon="receipt" data-size="16"></span></button>` : ''}
+          <button class="iconbtn danger" data-del="${x.id}"><span data-icon="trash" data-size="17"></span></button></td>
       </tr>`).join('')}</tbody></table></div>` : this.emptyState('arrowDown', 'Sin gastos registrados.');
   },
 
@@ -396,7 +399,10 @@ const App = {
   bindGan(root, t) {
     if (t === 'compras') $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removePurchase(b.dataset.del)));
     if (t === 'ventas') $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeSale(b.dataset.del)));
-    if (t === 'gastos') $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeExpense(b.dataset.del)));
+    if (t === 'gastos') {
+      $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeExpense(b.dataset.del)));
+      $$('[data-vcexp]', root).forEach(b => b.onclick = () => { const e = Store.expenses().find(x => x.id === b.dataset.vcexp); if (e) this.verComprobante(e.comprobante); });
+    }
     if (t === 'deudas') {
       $$('[data-pay]', root).forEach(b => b.onclick = () => { Store.payPayable(b.dataset.pay); toast('Marcado como pagado'); this.refresh(); });
       $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removePayable(b.dataset.del)));
@@ -413,6 +419,156 @@ const App = {
       $$('[data-edit]', root).forEach(b => b.onclick = () => this.formAnimal(b.dataset.edit));
       $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeAnimal(b.dataset.del)));
     }
+    if (t === 'fijos') this.bindFijos(root, 'ganaderia');
+  },
+
+  // ============================================================
+  //  GASTOS FIJOS / RECURRENTES + sueldos del mes
+  // ============================================================
+  fijosView(domain, withSalaries) {
+    const month = monthKey();
+    const monthName = new Date().toLocaleDateString('es-BO', { month: 'long', year: 'numeric' });
+    const total = Store.recurringMonthlyTotal(domain) + (withSalaries ? Store.nominaMensual() : 0);
+    let h = this.miniStats([
+      ['Fijos mensuales', money(total), 'clock', 'warn', 'Se repiten cada mes'],
+      ['Mes actual', monthName, 'calendar', '', 'Pagos y pendientes'],
+    ]);
+    h += `<p class="muted" style="font-size:13px;margin:-6px 2px 16px">Los gastos fijos se contemplan automáticamente para el próximo mes. Marcá cada uno cuando lo pagues.</p>`;
+
+    if (withSalaries) {
+      const emps = Store.activeEmployees();
+      h += `<div class="panel"><div class="panel-head"><h3>Sueldos del mes</h3>
+        <button class="btn btn-ghost btn-sm" id="shareMonth"><span data-icon="pdf"></span> Compartir resumen (PDF)</button></div>
+        <div class="panel-body">${emps.length ? `<div class="table-wrap"><table class="table">
+        <thead><tr><th>Empleado</th><th>Puesto</th><th class="num">Sueldo</th><th>Estado (${monthName})</th><th>Acciones</th></tr></thead>
+        <tbody>${emps.map(e => { const pago = Store.employeePaidIn(e.id, month); return `<tr>
+          <td><b>${esc(e.nombre)}</b></td><td>${esc(e.puesto)}</td><td class="num">${money(e.salario)}</td>
+          <td>${pago ? `<span class="badge ok">Pagado ${fdate(pago.fecha)}</span>` : `<span class="badge pend">Pendiente</span>`}</td>
+          <td class="actions">
+            ${pago ? (pago.comprobante ? `<button class="iconbtn" data-vercompemp="${e.id}" title="Ver comprobante"><span data-icon="receipt" data-size="16"></span></button>` : '')
+                   : `<button class="btn btn-primary btn-sm" data-paysal="${e.id}">Pagar sueldo</button>`}
+            <button class="iconbtn" data-histemp="${e.id}" title="Extracto / PDF"><span data-icon="eye" data-size="16"></span></button>
+          </td></tr>`; }).join('')}</tbody></table></div>` : this.emptyState('workers', 'Sin empleados activos. Agregalos en la pestaña Empleados.')}</div></div>`;
+    }
+
+    const recs = Store.recurring(domain);
+    h += `<div class="panel" style="margin-top:16px"><div class="panel-head"><h3>Otros gastos fijos</h3>
+      <button class="btn btn-primary btn-sm" id="addRec"><span data-icon="plus"></span> Agregar gasto fijo</button></div>
+      <div class="panel-body">${recs.length ? `<div class="table-wrap"><table class="table">
+      <thead><tr><th>Nombre</th><th>Categoría</th><th class="num">Monto</th><th>Estado (${monthName})</th><th>Acciones</th></tr></thead>
+      <tbody>${recs.map(r => { const paid = Store.recurringPaidIn(r.id, month); return `<tr>
+        <td><b>${esc(r.nombre)}</b></td><td>${esc(r.categoria)}</td><td class="num">${money(r.monto)}</td>
+        <td>${paid ? '<span class="badge ok">Pagado</span>' : '<span class="badge pend">Pendiente</span>'}</td>
+        <td class="actions">
+          ${paid ? `<button class="iconbtn" data-unpay="${r.id}" title="Desmarcar pago"><span data-icon="close" data-size="16"></span></button>`
+                 : `<button class="btn btn-primary btn-sm" data-payrec="${r.id}">Marcar pagado</button>`}
+          <button class="iconbtn" data-editrec="${r.id}"><span data-icon="edit" data-size="16"></span></button>
+          <button class="iconbtn danger" data-delrec="${r.id}"><span data-icon="trash" data-size="16"></span></button>
+        </td></tr>`; }).join('')}</tbody></table></div>` : this.emptyState('clock', 'Sin gastos fijos. Agregá uno (ej: alquiler, internet, forraje mensual).')}</div></div>`;
+    return h;
+  },
+  gan_fijos() { return this.fijosView('ganaderia', true); },
+
+  bindFijos(root, domain) {
+    const month = monthKey();
+    const sm = $('#shareMonth', root); if (sm) sm.onclick = () => this.exportMonthlyStatement(month);
+    const ar = $('#addRec', root); if (ar) ar.onclick = () => this.formRecurring(null, domain);
+    $$('[data-paysal]', root).forEach(b => b.onclick = () => this.formPagoEmpleado(b.dataset.paysal));
+    $$('[data-histemp]', root).forEach(b => b.onclick = () => this.empleadoHist(b.dataset.histemp));
+    $$('[data-vercompemp]', root).forEach(b => b.onclick = () => { const p = Store.employeePaidIn(b.dataset.vercompemp, month); if (p) this.verComprobante(p.comprobante); });
+    $$('[data-payrec]', root).forEach(b => b.onclick = () => this.payRecurringModal(b.dataset.payrec));
+    $$('[data-unpay]', root).forEach(b => b.onclick = () => { Store.unmarkRecurringPaid(b.dataset.unpay, month); toast('Pago desmarcado'); this.refresh(); });
+    $$('[data-editrec]', root).forEach(b => b.onclick = () => this.formRecurring(b.dataset.editrec, domain));
+    $$('[data-delrec]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeRecurring(b.dataset.delrec)));
+  },
+
+  formRecurring(id, domain) {
+    const r = id ? Store.recurring().find(x => x.id === id) || Store.all().recurring.find(x => x.id === id) : {};
+    const cats = GASTO_CATS[domain || r.domain || 'ganaderia'];
+    const banks = Store.banks();
+    const body = `<div class="form-grid">
+      <div class="field col-2"><label>Nombre <span class="req">*</span></label><div class="control"><input id="rcNom" value="${esc(r.nombre || '')}" placeholder="Ej: Alquiler del campo"></div></div>
+      <div class="field"><label>Monto mensual <span class="req">*</span></label><div class="control"><span class="prefix">Bs</span><input type="number" id="rcMonto" value="${r.monto || ''}" placeholder="0"></div></div>
+      <div class="field"><label>Día del mes</label><div class="control"><input type="number" id="rcDia" min="1" max="31" value="${r.dia || 1}"></div></div>
+      <div class="field"><label>Categoría</label><select class="control" id="rcCat">${opt(cats, r.categoria)}</select></div>
+      <div class="field"><label>Banco</label><select class="control" id="rcBank"><option value="">Ninguno</option>${banks.map(b => `<option value="${b.id}" ${r.bank_id === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></div>
+    </div>`;
+    this.openModal(id ? 'Editar gasto fijo' : 'Nuevo gasto fijo', body, [
+      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
+      { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: () => {
+        const nom = $('#rcNom').value.trim(), monto = +$('#rcMonto').value;
+        if (!nom) return toast('Falta el nombre'); if (!monto) return toast('Falta el monto');
+        const data = { domain: domain || r.domain || 'ganaderia', nombre: nom, monto, dia: +$('#rcDia').value || 1, categoria: $('#rcCat').value, bank_id: $('#rcBank').value || null };
+        id ? Store.updateRecurring(id, data) : Store.addRecurring(data);
+        this.closeModal(); toast('Gasto fijo guardado'); this.refresh();
+      } },
+    ]);
+  },
+
+  payRecurringModal(id) {
+    const r = Store.all().recurring.find(x => x.id === id); if (!r) return;
+    const month = monthKey();
+    const banks = Store.banks();
+    const body = `<p class="sub" style="margin-bottom:16px;color:var(--c-muted)">Marcar <b>${esc(r.nombre)}</b> (${money(r.monto)}) como pagado este mes.</p>
+      <div class="form-grid">
+        <div class="field"><label>Banco</label><select class="control" id="prBank"><option value="">Efectivo</option>${banks.map(b => `<option value="${b.id}" ${r.bank_id === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></div>
+        <div class="field"><label>Comprobante (foto/PDF)</label><div class="control"><input type="file" id="prComp" accept="image/*,application/pdf"></div></div>
+      </div>`;
+    this.openModal('Pagar gasto fijo', body, [
+      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
+      { label: 'Marcar pagado', cls: 'btn-primary', icon: 'check', fn: async () => {
+        const comp = await this.fileToDataURL($('#prComp'));
+        Store.markRecurringPaid(id, month, { bank_id: $('#prBank').value || null, comprobante: comp });
+        this.closeModal(); toast('Pago registrado'); this.refresh();
+      } },
+    ]);
+  },
+
+  // Extracto del mes para compartir con los trabajadores (PDF imprimible)
+  exportMonthlyStatement(month) {
+    const monthName = new Date(month + '-01T00:00:00').toLocaleDateString('es-BO', { month: 'long', year: 'numeric' });
+    const emps = Store.activeEmployees();
+    const recs = Store.recurring('ganaderia');
+    const filas = emps.map(e => { const p = Store.employeePaidIn(e.id, month);
+      return `<tr><td>${esc(e.nombre)}</td><td>${esc(e.puesto)}</td><td class="num">${money(e.salario)}</td>
+        <td>${p ? 'PAGADO (' + fdate(p.fecha) + ')' : 'PENDIENTE'}</td></tr>`; }).join('');
+    const recFilas = recs.map(r => { const paid = Store.recurringPaidIn(r.id, month);
+      return `<tr><td>${esc(r.nombre)}</td><td>${esc(r.categoria)}</td><td class="num">${money(r.monto)}</td><td>${paid ? 'PAGADO' : 'PENDIENTE'}</td></tr>`; }).join('');
+    const win = window.open('', '_blank');
+    win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Extracto ${monthName}</title>
+      <style>body{font-family:Arial,sans-serif;color:#1c1a14;padding:38px;max-width:760px;margin:0 auto}
+      .hd{display:flex;align-items:center;gap:16px;border-bottom:3px solid #c8a44d;padding-bottom:16px;margin-bottom:24px}
+      .hd img{width:80px;height:80px;object-fit:contain}.hd h1{font-size:21px;margin:0}.hd p{margin:2px 0;color:#666;font-size:13px}
+      h2{font-size:15px;margin:22px 0 8px}table{width:100%;border-collapse:collapse;font-size:13px}
+      th{background:#f3efe3;text-align:left;padding:9px 12px;border-bottom:2px solid #ddd}
+      td{padding:9px 12px;border-bottom:1px solid #eee}.num{text-align:right}
+      .foot{margin-top:30px;font-size:11px;color:#999;text-align:center}</style></head><body>
+      <div class="hd"><img src="${location.origin}${location.pathname.replace(/index\.html$/, '')}assets/img/logo.jpg">
+        <div><h1>Ganadería Dyck Manantial</h1><p>Extracto de pagos — ${monthName}</p>
+        <p>Emitido: ${new Date().toLocaleDateString('es-BO')}</p></div></div>
+      <h2>Sueldos</h2><table><thead><tr><th>Empleado</th><th>Puesto</th><th class="num">Sueldo</th><th>Estado</th></tr></thead>
+        <tbody>${filas || '<tr><td colspan="4">Sin empleados</td></tr>'}</tbody></table>
+      <h2>Gastos fijos</h2><table><thead><tr><th>Nombre</th><th>Categoría</th><th class="num">Monto</th><th>Estado</th></tr></thead>
+        <tbody>${recFilas || '<tr><td colspan="4">Sin gastos fijos</td></tr>'}</tbody></table>
+      <div class="foot">Documento generado por el sistema Dyck Manantial</div>
+      <script>window.onload=()=>window.print()<\/script></body></html>`);
+    win.document.close();
+  },
+
+  // Helpers de comprobantes
+  fileToDataURL(input) {
+    return new Promise(res => {
+      const f = input && input.files && input.files[0]; if (!f) return res(null);
+      if (f.size > 2 * 1024 * 1024) { toast('Archivo muy pesado (máx 2MB)'); return res(null); }
+      const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsDataURL(f);
+    });
+  },
+  verComprobante(data) {
+    if (!data) return toast('Sin comprobante');
+    const w = window.open('', '_blank');
+    if (String(data).startsWith('data:application/pdf')) w.document.write(`<iframe src="${data}" style="border:0;width:100%;height:100vh"></iframe>`);
+    else w.document.write(`<img src="${data}" style="max-width:100%;display:block;margin:auto">`);
+    w.document.close();
   },
 
   // ----- Form animal -----
@@ -558,8 +714,12 @@ const App = {
     let h = this.head('Gastos personales', 'Tus salidas de la vida personal', 'Nuevo gasto', 'arrowDown', () => this.formExpense('personal'));
     h += this.miniStats([['Total gastado', money(total), 'arrowDown', 'expense'], ['Movimientos', rows.length, 'receipt']]);
     h += this.panel('Historial de gastos personales', this.expenseTable(rows));
+    h += `<div class="section"><div class="section-title"><span data-icon="clock"></span> Gastos fijos personales</div>${this.fijosView('personal', false)}</div>`;
     this.paint('personales', h);
-    $$('#screen-personales [data-del]').forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeExpense(b.dataset.del)));
+    const root = $('#screen-personales');
+    $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeExpense(b.dataset.del)));
+    $$('[data-vcexp]', root).forEach(b => b.onclick = () => { const e = Store.expenses().find(x => x.id === b.dataset.vcexp); if (e) this.verComprobante(e.comprobante); });
+    this.bindFijos(root, 'personal');
   },
 
   // ============================================================
@@ -567,7 +727,7 @@ const App = {
   // ============================================================
   renderIngresos() {
     const inc = Store.incomes().map(x => ({ k: 'inc', id: x.id, fecha: x.fecha, fuente: x.categoria, area: x.domain,
-      bank: x.bank_id, monto: x.monto, det: x.descripcion || '—', venta: false }));
+      bank: x.bank_id, monto: x.monto, det: x.descripcion || '—', venta: false, comp: x.comprobante }));
     const sal = Store.sales().map(s => ({ k: 'sale', id: s.id, fecha: s.fecha, fuente: 'Venta de ganado' + (s.cliente ? ' — ' + s.cliente : ''),
       area: 'ganaderia', bank: s.bank_id, monto: s.total, det: (s.items || []).reduce((a, i) => a + (+i.cantidad || 0), 0) + ' cab.', venta: true }));
     const rows = [...inc, ...sal].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
@@ -581,12 +741,15 @@ const App = {
         <td><span class="badge ${r.area === 'personal' ? 'per' : 'gan'}">${r.area === 'personal' ? 'Personal' : 'Ganadería'}</span></td>
         <td>${esc(Store.bankName(r.bank))}</td><td>${esc(r.det)}</td>
         <td class="num"><span class="pill-amount income">+ ${money(r.monto)}</span></td>
-        <td class="actions"><button class="iconbtn danger" data-${r.k}="${r.id}"><span data-icon="trash" data-size="17"></span></button></td>
+        <td class="actions">
+          ${r.k === 'inc' && r.comp ? `<button class="iconbtn" data-vcinc="${r.id}" title="Ver comprobante"><span data-icon="receipt" data-size="16"></span></button>` : ''}
+          <button class="iconbtn danger" data-${r.k}="${r.id}"><span data-icon="trash" data-size="17"></span></button></td>
       </tr>`).join('')}</tbody></table></div>` : this.emptyState('coins', 'Sin ingresos. Las ventas de ganado también aparecen acá.'));
     this.paint('ingresos', h);
     const root = $('#screen-ingresos');
     $$('[data-inc]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeIncome(b.dataset.inc)));
     $$('[data-sale]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeSale(b.dataset.sale)));
+    $$('[data-vcinc]', root).forEach(b => b.onclick = () => { const i = Store.incomes().find(x => x.id === b.dataset.vcinc); if (i) this.verComprobante(i.comprobante); });
   },
 
   // ----- Formulario de gasto (área fija) -----
@@ -598,13 +761,15 @@ const App = {
         <div class="field"><label>Fecha</label><div class="control"><input type="date" id="exFecha" value="${Store.today()}"></div></div>
         <div class="field"><label>Categoría</label><select class="control" id="exCat">${opt(cats)}</select></div>
         <div class="field"><label>Banco</label><select class="control" id="exBank"><option value="">Ninguno</option>${banks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
-        <div class="field col-2"><label>Detalle</label><div class="control"><input id="exDesc" placeholder="Opcional"></div></div>
+        <div class="field"><label>Detalle</label><div class="control"><input id="exDesc" placeholder="Opcional"></div></div>
+        <div class="field"><label>Comprobante (foto/PDF)</label><div class="control"><input type="file" id="exComp" accept="image/*,application/pdf"></div></div>
       </div>`;
     this.openModal('Registrar ' + label, body, [
       { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
-      { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: () => {
+      { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: async () => {
         const monto = +$('#exMonto').value; if (!monto || monto <= 0) return toast('Ingresá un monto válido');
-        Store.addExpense({ domain, fecha: $('#exFecha').value, categoria: $('#exCat').value, bank_id: $('#exBank').value || null, monto, descripcion: $('#exDesc').value.trim() });
+        const comp = await this.fileToDataURL($('#exComp'));
+        Store.addExpense({ domain, fecha: $('#exFecha').value, categoria: $('#exCat').value, bank_id: $('#exBank').value || null, monto, descripcion: $('#exDesc').value.trim(), comprobante: comp });
         this.closeModal(); toast('Gasto registrado'); this.refresh();
       } },
     ]);
@@ -621,13 +786,15 @@ const App = {
         <div class="field"><label>Fecha</label><div class="control"><input type="date" id="inFecha" value="${Store.today()}"></div></div>
         <div class="field"><label>Categoría</label><select class="control" id="inCat">${opt(INGRESO_CATS.ganaderia)}</select></div>
         <div class="field"><label>Banco</label><select class="control" id="inBank"><option value="">Ninguno</option>${banks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
-        <div class="field col-2"><label>Detalle</label><div class="control"><input id="inDesc" placeholder="Opcional"></div></div>
+        <div class="field"><label>Detalle</label><div class="control"><input id="inDesc" placeholder="Opcional"></div></div>
+        <div class="field"><label>Comprobante (foto/PDF)</label><div class="control"><input type="file" id="inComp" accept="image/*,application/pdf"></div></div>
       </div>`;
     this.openModal('Registrar Ingreso', body, [
       { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
-      { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: () => {
+      { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: async () => {
         const monto = +$('#inMonto').value; if (!monto || monto <= 0) return toast('Ingresá un monto válido');
-        Store.addIncome({ domain: this._inDom(), fecha: $('#inFecha').value, categoria: $('#inCat').value, bank_id: $('#inBank').value || null, monto, descripcion: $('#inDesc').value.trim() });
+        const comp = await this.fileToDataURL($('#inComp'));
+        Store.addIncome({ domain: this._inDom(), fecha: $('#inFecha').value, categoria: $('#inCat').value, bank_id: $('#inBank').value || null, monto, descripcion: $('#inDesc').value.trim(), comprobante: comp });
         this.closeModal(); toast('Ingreso registrado'); this.refresh();
       } },
     ]);
@@ -723,12 +890,14 @@ const App = {
         <div class="field"><label>Fecha</label><div class="control"><input type="date" id="pFecha" value="${Store.today()}"></div></div>
         <div class="field"><label>Concepto</label><div class="control"><input id="pConc" value="Salario"></div></div>
         <div class="field"><label>Banco</label><select class="control" id="pBank"><option value="">Efectivo</option>${banks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
+        <div class="field col-2"><label>Comprobante (foto/PDF)</label><div class="control"><input type="file" id="pComp" accept="image/*,application/pdf"></div></div>
       </div>`;
     this.openModal('Registrar Pago', body, [
       { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
-      { label: 'Registrar', cls: 'btn-primary', icon: 'check', fn: () => {
+      { label: 'Registrar', cls: 'btn-primary', icon: 'check', fn: async () => {
         const monto = +$('#pMonto').value; if (!monto) return toast('Monto inválido');
-        Store.payEmployee(id, { monto, fecha: $('#pFecha').value, concepto: $('#pConc').value, bank_id: $('#pBank').value || null });
+        const comp = await this.fileToDataURL($('#pComp'));
+        Store.payEmployee(id, { monto, fecha: $('#pFecha').value, concepto: $('#pConc').value, bank_id: $('#pBank').value || null, comprobante: comp });
         this.closeModal(); toast('Pago registrado'); this.refresh();
       } },
     ]);
@@ -741,13 +910,15 @@ const App = {
       <div class="stat"><div class="lbl">Salario</div><div class="val" style="font-size:22px">${money(e.salario)}</div></div>
       <div class="stat"><div class="lbl">Total pagado</div><div class="val income" style="font-size:22px">${money(totalPagado)}</div></div>
     </div>
-    ${pagos.length ? `<table class="table"><thead><tr><th>Fecha</th><th>Concepto</th><th>Banco</th><th class="num">Monto</th></tr></thead>
-      <tbody>${pagos.map(p => `<tr><td>${fdate(p.fecha)}</td><td>${esc(p.concepto)}</td><td>${esc(Store.bankName(p.bank_id))}</td><td class="num">${money(p.monto)}</td></tr>`).join('')}</tbody></table>`
+    ${pagos.length ? `<table class="table"><thead><tr><th>Fecha</th><th>Concepto</th><th>Banco</th><th class="num">Monto</th><th>Comp.</th></tr></thead>
+      <tbody>${pagos.map(p => `<tr><td>${fdate(p.fecha)}</td><td>${esc(p.concepto)}</td><td>${esc(Store.bankName(p.bank_id))}</td><td class="num">${money(p.monto)}</td>
+        <td>${p.comprobante ? `<button class="iconbtn" data-vcp="${p.id}" title="Ver comprobante"><span data-icon="receipt" data-size="16"></span></button>` : '—'}</td></tr>`).join('')}</tbody></table>`
       : `<div class="empty">Sin pagos registrados todavía.</div>`}`;
     this.openModal(`Historial · ${esc(e.nombre)}`, body, [
       { label: 'Cerrar', cls: 'btn-ghost', fn: () => this.closeModal() },
       { label: 'Exportar PDF', cls: 'btn-primary', icon: 'pdf', fn: () => this.exportEmpleadoPDF(id) },
     ]);
+    $$('#modalBody [data-vcp]').forEach(b => b.onclick = () => { const p = (e.pagos || []).find(x => x.id === b.dataset.vcp); if (p) this.verComprobante(p.comprobante); });
   },
   exportEmpleadoPDF(id) {
     const e = Store.employees().find(x => x.id === id); if (!e) return;
@@ -895,10 +1066,10 @@ const App = {
   // ============================================================
   tourSteps: [
     { sel: '[data-go="dashboard"]', title: 'Dashboard', text: 'Tu panel general: saldo, lo que entra y sale, gráficos y un resumen separado de Ganadería y Vida Personal. Todo lo que cargues cae acá.' },
-    { sel: '[data-go="ganaderia"]', title: 'Ganadería', text: 'Todo el campo en un solo lugar: animales (uno por uno, con muertes y motivos), compras, ventas, gastos, empleados y deudas.' },
-    { sel: '[data-go="personales"]', title: 'Gastos personales', text: 'Tus salidas personales, separados de la ganadería: comida, salud, transporte, vivienda, etc.' },
+    { sel: '[data-go="ganaderia"]', title: 'Ganadería', text: 'Todo el campo en un solo lugar: animales (uno por uno, con muertes y motivos), compras, ventas, gastos, gastos FIJOS (sueldos y mensuales) con botón Pagado, empleados y deudas.' },
+    { sel: '[data-go="personales"]', title: 'Gastos personales', text: 'Tus salidas personales, separadas de la ganadería: comida, salud, transporte, vivienda. También tus gastos fijos personales.' },
     { sel: '[data-go="ingresos"]', title: 'Ingresos', text: 'Todo lo que entra, ganadería y personal juntos. Las ventas de ganado aparecen acá automáticamente.' },
-    { sel: '#fabQuick', title: 'Gasto rápido', text: 'Este botón está siempre a mano: cargás un gasto en segundos — área, monto y banco. Ideal para el día a día.' },
+    { sel: '#fabQuick', title: 'Gasto rápido', text: 'Para gastos que pasan y ya: en segundos cargás área, monto y banco. Los gastos FIJOS (que se repiten cada mes) se cargan en la pestaña Fijos de Ganadería.' },
     { sel: '#btnSettings', title: 'Ajustes', text: 'Tus bancos, el color del sistema, exportar datos o volver a ver este tour cuando quieras.' },
   ],
   tourIndex: 0,
