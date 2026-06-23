@@ -64,6 +64,7 @@ const ICON_PATHS = {
   building:    '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2M10 21v-3h4v3"/>',
   pdf:         '<path d="M6 2h9l5 5v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M14 2v6h6"/><path d="M8 14h1.5a1.5 1.5 0 0 1 0 3H8zM8 14v6M14 14v6M14 14h2M14 17h1.5"/>',
   sparkles:    '<path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M19 14l.8 1.8L21.6 17l-1.8.8L19 19.6l-.8-1.8L16.4 17l1.8-.8z"/>',
+  lock:        '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.4"/>',
 };
 
 // Logo de Google a color (marca oficial), no es trazo monocromo

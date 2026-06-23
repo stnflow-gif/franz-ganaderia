@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=13">
+  <link rel="stylesheet" href="assets/css/app.css?v=14">
 </head>
 <body>
 
@@ -19,12 +19,14 @@
       <img class="logo" src="assets/img/logo.jpg" alt="Dyck Manantial">
       <h2>Dyck Manantial</h2>
       <p class="sub">Sistema de Gestión Ganadera</p>
-      <button class="btn-google" id="btnGoogle"><span data-icon="google" data-size="20"></span> Iniciar Sesión con Google</button>
+      <button class="btn-google" id="btnGoogle"><span data-icon="google" data-size="20"></span> Iniciar sesión con Google</button>
       <div class="divider">o con tu correo</div>
-      <div class="field"><label>Email</label><div class="control"><input type="email" id="logEmail" placeholder="franz@correo.com"></div></div>
-      <div class="field"><label>Contraseña</label><div class="control"><input type="password" id="logPass" placeholder="••••••••"></div></div>
+      <div class="field"><label>Email</label><div class="control"><input type="email" id="logEmail" placeholder="franz@correo.com" autocomplete="email"></div></div>
+      <div class="field"><label>Contraseña</label><div class="control"><input type="password" id="logPass" placeholder="••••••••" autocomplete="current-password"></div></div>
       <button class="btn btn-primary" style="width:100%" id="btnLogin">Entrar</button>
-      <p class="note-soft" id="loginNote">Conexión a Supabase pendiente — por ahora entrás en modo local.</p>
+      <p class="auth-toggle" id="authToggle">¿Primera vez? <b>Creá tu cuenta</b></p>
+      <p class="note-soft" id="loginNote"></p>
+      <div class="e2e"><span data-icon="lock" data-size="14"></span> Cifrado de extremo a extremo</div>
     </div>
   </div>
 
@@ -90,11 +92,11 @@
 
   <div id="toast"></div>
 
-  <script src="assets/js/config.js?v=13"></script>
-  <script src="assets/js/icons.js?v=13"></script>
-  <script src="assets/js/store.js?v=13"></script>
-  <script src="assets/js/app.js?v=13"></script>
-  <script src="assets/js/sync.js?v=13"></script>
+  <script src="assets/js/config.js?v=14"></script>
+  <script src="assets/js/icons.js?v=14"></script>
+  <script src="assets/js/store.js?v=14"></script>
+  <script src="assets/js/app.js?v=14"></script>
+  <script src="assets/js/sync.js?v=14"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));

@@ -61,26 +61,46 @@ const App = {
     $$('[data-icon]', root).forEach(el => { el.innerHTML = icon(el.dataset.icon, el.dataset.size ? +el.dataset.size : 20); });
   },
 
+  authMode: 'login',
   bindGlobal() {
     const supaConfigured = () => !!(window.SUPA_CONFIG && window.SUPA_CONFIG.anonKey);
-    $('#btnGoogle').onclick = () => {
-      if (window.Sync) { $('#loginNote').textContent = 'Abriendo Google…'; window.Sync.signInGoogle(); }
-      else if (supaConfigured()) toast('Conectando con el servidor, probá de nuevo en un segundo…');
-      else this.login('Franz Dyck', 'franz@dyckmanantial.com', 'Google');
+    const note = (m) => { const n = $('#loginNote'); if (n) n.textContent = m || ''; };
+
+    // Alternar Entrar / Crear cuenta
+    $('#authToggle').onclick = () => {
+      this.authMode = this.authMode === 'login' ? 'signup' : 'login';
+      $('#btnLogin').textContent = this.authMode === 'login' ? 'Entrar' : 'Crear cuenta';
+      $('#authToggle').innerHTML = this.authMode === 'login' ? '¿Primera vez? <b>Creá tu cuenta</b>' : '¿Ya tenés cuenta? <b>Iniciá sesión</b>';
+      note('');
     };
+
+    $('#btnGoogle').onclick = async () => {
+      if (!supaConfigured()) return this.login('Franz Dyck', 'franz@dyckmanantial.com', 'Google'); // modo local
+      if (!window.Sync) return toast('Conectando con el servidor, probá en un segundo…');
+      note('Abriendo Google…');
+      const r = await window.Sync.signInGoogle();
+      if (r && r.error) note(/not enabled|Unsupported/i.test(r.error.message) ? 'Google todavía no está activado en el servidor. Usá tu email por ahora.' : r.error.message);
+    };
+
     $('#btnLogin').onclick = async () => {
       const email = $('#logEmail').value.trim(), pass = $('#logPass').value;
-      if (window.Sync) {
-        if (!email || !pass) return toast('Ingresá email y contraseña');
-        $('#loginNote').textContent = 'Entrando…';
-        let r = await window.Sync.signInPassword(email, pass);
-        if (r.error) {                                  // si no existe, crear cuenta
-          r = await window.Sync.signUp(email, pass);
-          if (r.error) { $('#loginNote').textContent = r.error.message; return; }
-          $('#loginNote').textContent = 'Cuenta creada. Si te pide confirmar el email, revisá tu correo.';
-        }
-      } else if (supaConfigured()) { toast('Conectando con el servidor, probá de nuevo en un segundo…'); }
-      else { this.login('Franz Dyck', email || 'franz@dyckmanantial.com', 'email'); }
+      if (!supaConfigured()) return this.login('Franz Dyck', email || 'franz@dyckmanantial.com', 'email'); // modo local
+      if (!window.Sync) return toast('Conectando con el servidor, probá en un segundo…');
+      if (!email || !pass) return note('Ingresá tu email y contraseña.');
+      if (pass.length < 6 && this.authMode === 'signup') return note('La contraseña debe tener al menos 6 caracteres.');
+
+      if (this.authMode === 'signup') {
+        note('Creando cuenta…');
+        const r = await window.Sync.signUp(email, pass);
+        if (r.error) return note(this.authError(r.error.message));
+        if (r.data && r.data.session) note('¡Cuenta creada! Entrando…');         // autoconfirm activado
+        else note('Te enviamos un correo para confirmar la cuenta. Confirmalo y volvé a entrar.');
+      } else {
+        note('Entrando…');
+        const r = await window.Sync.signInPassword(email, pass);
+        if (r.error) return note(this.authError(r.error.message));
+        // onAuthStateChange hace enterApp()
+      }
     };
     $('#btnLogout').onclick = async () => { if (window.Sync) { try { await window.Sync.signOut(); } catch (e) {} } Store.setSetting('user', null); location.reload(); };
     $$('#nav button, #btnSettings').forEach(b => b.onclick = () => { this.go(b.dataset.go); this.closeDrawer(); });
@@ -93,12 +113,24 @@ const App = {
 
   closeDrawer() { $('#sidebar').classList.remove('open'); $('#scrim').classList.remove('open'); },
 
-  // ---------- Auth (visual; backend pendiente) ----------
-  login(name, email, via) {
+  // ---------- Auth ----------
+  login(name, email, via) {          // modo local (sin backend configurado)
     Store.setSetting('user', { name, email, via });
     this.enterApp();
   },
-  showLogin() { $('#loginScreen').classList.remove('hidden'); $('#shell').classList.add('hidden'); $('#fabQuick').classList.add('hidden'); },
+  authError(msg) {
+    const m = (msg || '').toLowerCase();
+    if (m.includes('invalid login')) return 'Email o contraseña incorrectos.';
+    if (m.includes('not confirmed')) return 'Confirmá tu email primero (revisá tu correo).';
+    if (m.includes('already registered') || m.includes('already been registered')) return 'Ese email ya tiene cuenta. Iniciá sesión.';
+    if (m.includes('password')) return 'La contraseña debe tener al menos 6 caracteres.';
+    return msg || 'No se pudo completar. Probá de nuevo.';
+  },
+  showLogin() {
+    $('#loginScreen').classList.remove('hidden'); $('#shell').classList.add('hidden'); $('#fabQuick').classList.add('hidden');
+    const cfg = window.SUPA_CONFIG || {};
+    const n = $('#loginNote'); if (n) n.textContent = cfg.anonKey ? '' : 'Modo local — sin conexión a la nube configurada.';
+  },
   enterApp() {
     const u = Store.settings().user || { name: 'Franz Dyck', email: 'modo local' };
     $('#loginScreen').classList.add('hidden'); $('#shell').classList.remove('hidden'); $('#fabQuick').classList.remove('hidden');
