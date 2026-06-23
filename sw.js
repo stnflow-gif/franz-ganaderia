@@ -2,7 +2,7 @@
    Funciona offline tras la 1ª carga online. Nota: el SW solo corre en
    https o localhost (no en file://); por eso, para offline real, hostear
    en Cloudflare Pages. Los datos igual viven en localStorage. */
-const CACHE = 'dyck-v15';
+const CACHE = 'dyck-v16';
 const ASSETS = [
   './', './index.html',
   './assets/css/app.css',
