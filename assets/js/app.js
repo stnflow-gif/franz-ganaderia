@@ -1001,21 +1001,42 @@ const App = {
           </div></div>`).join('')}</div>
       ${!banks.length ? this.emptyState('bank', 'Agregá tu primer banco.') : ''}</div>`;
 
+    // Estado del sistema + verificación
+    const cfg = window.SUPA_CONFIG || {};
+    const estado = window.SUPA_READY ? ['ok', 'Conectado y sincronizando'] : cfg.anonKey ? ['pend', 'Configurado — iniciá sesión para sincronizar'] : ['off', 'Modo local (sin nube)'];
+    h += `<div class="section"><div class="section-title"><span data-icon="check"></span> Estado y verificación</div>
+      <div class="panel"><div class="panel-body" style="padding:18px 22px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <span class="badge ${estado[0] === 'ok' ? 'ok' : estado[0] === 'pend' ? 'pend' : 'off'}">${esc(estado[1])}</span>
+          <button class="btn btn-primary btn-sm" id="btnVerify"><span data-icon="check"></span> Verificar sistema</button>
+        </div>
+        <p class="sub" style="color:var(--c-muted);font-size:13px">Tus datos se guardan <b>en este dispositivo</b> y, al iniciar sesión, también en la nube como respaldo. Aunque no entres por más de 7 días, la información <b>no se borra</b>: queda local y en la nube (si el servidor se pausa por inactividad, se reactiva solo al volver a entrar). Igual conviene <b>exportar un respaldo</b> de vez en cuando.</p>
+      </div></div></div>`;
+
     h += `<div class="section"><div class="section-title"><span data-icon="download"></span> Datos y ayuda</div>
       <div class="panel"><div class="panel-body" style="padding:18px 22px;display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-ghost" id="btnExport"><span data-icon="download"></span> Exportar datos (JSON)</button>
+        <button class="btn btn-ghost" id="btnExport"><span data-icon="download"></span> Exportar respaldo (JSON)</button>
+        <button class="btn btn-ghost" id="btnImport"><span data-icon="download"></span> Importar respaldo</button>
         <button class="btn btn-ghost" id="btnTour"><span data-icon="sparkles"></span> Ver tour de nuevo</button>
         <button class="btn btn-ghost" id="btnDemo"><span data-icon="sparkles"></span> Cargar datos de ejemplo</button>
         <button class="btn btn-danger" id="btnReset"><span data-icon="trash"></span> Borrar todo</button>
       </div>
       <div class="panel-body" style="padding:0 22px 18px"><p class="sub" style="color:var(--c-muted);font-size:13px">
-        "Datos de ejemplo" llena el sistema para que veas los gráficos y reportes con vida (ideal para mostrarle a Franz). "Borrar todo" lo deja limpio para empezar en serio.</p></div></div></div>`;
+        "Datos de ejemplo" llena el sistema para mostrarlo con vida. "Borrar todo" lo deja limpio para empezar en serio. "Importar" restaura un respaldo exportado antes.</p></div></div></div>
+      <input type="file" id="importFile" accept="application/json" style="display:none">`;
     this.paint('ajustes', h);
     const root = $('#screen-ajustes');
     $$('.theme-card', root).forEach(c => c.onclick = () => { this.applyTheme(c.dataset.theme); Store.setSetting('theme', c.dataset.theme); this.refresh(); });
     $('#addBank').onclick = () => this.formBanco();
     $$('[data-bedit]', root).forEach(b => b.onclick = () => this.formBanco(b.dataset.bedit));
     $$('[data-bdel]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeBank(b.dataset.bdel)));
+    $('#btnVerify').onclick = () => this.runDiagnostics();
+    $('#btnImport').onclick = () => $('#importFile').click();
+    $('#importFile').onchange = async (ev) => {
+      const f = ev.target.files[0]; if (!f) return;
+      try { const txt = await f.text(); const obj = JSON.parse(txt); Store.loadSnapshot(obj); toast('Respaldo importado'); this.go('dashboard'); }
+      catch (e) { toast('Archivo inválido'); }
+    };
     $('#btnExport').onclick = () => this.exportData();
     $('#btnTour').onclick = () => { this.go('dashboard'); setTimeout(() => this.startTour(), 300); };
     $('#btnDemo').onclick = () => { Store.loadDemo(); toast('Datos de ejemplo cargados'); this.go('dashboard'); };
@@ -1024,6 +1045,62 @@ const App = {
         { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
         { label: 'Borrar todo', cls: 'btn-danger', icon: 'trash', fn: () => { Store.reset(); this.closeModal(); toast('Datos borrados'); this.go('dashboard'); } },
       ]);
+  },
+
+  // ============================================================
+  //  Verificación del sistema (diagnóstico en vivo)
+  // ============================================================
+  async runDiagnostics() {
+    const cfg = window.SUPA_CONFIG || {};
+    this.openModal('Verificación del sistema', `<div id="diagBody"><p class="sub" style="color:var(--c-muted)">Verificando…</p></div>`, [
+      { label: 'Cerrar', cls: 'btn-ghost', fn: () => this.closeModal() },
+    ]);
+    const checks = [];
+    const ok = (n, c, hint) => checks.push({ n, c, hint });
+
+    // --- Lógica y datos locales ---
+    try {
+      const before = Store.expenses().length;
+      const t = Store.addExpense({ domain: 'ganaderia', categoria: 'Otros', monto: 1 });
+      const added = Store.expenses().length === before + 1;
+      Store.removeExpense(t.id);
+      const restored = Store.expenses().length === before;
+      ok('Lógica de datos (alta/baja)', added && restored);
+    } catch (e) { ok('Lógica de datos (alta/baja)', false, e.message); }
+    ok('Datos guardados en este dispositivo', !!localStorage.getItem('dyck.db.v3'));
+    const d = Store.domainBreakdown('ganaderia');
+    ok('Cálculos financieros coherentes', Math.round(d.balance) === Math.round(d.ingreso - d.salida));
+    ok('Terminología correcta (sin "egreso")', !('egreso' in d) && ('salida' in d));
+
+    // --- Backend / nube ---
+    let reach = false, table = false;
+    if (cfg.anonKey) {
+      try { const r = await fetch(cfg.url + '/auth/v1/health', { headers: { apikey: cfg.anonKey } }); reach = r.ok; } catch (e) {}
+      try { const r = await fetch(cfg.url + '/rest/v1/user_data?select=user_id&limit=1', { headers: { apikey: cfg.anonKey, Authorization: 'Bearer ' + cfg.anonKey } }); table = r.status !== 404; } catch (e) {}
+      ok('Conexión con Supabase', reach);
+      ok('Tabla de respaldo creada (user_data)', table, table ? '' : 'Falta pegar el SQL de 0002_user_data.sql en Supabase');
+      ok('Sesión iniciada (sync activo)', !!window.SUPA_READY, window.SUPA_READY ? '' : 'Iniciá sesión para sincronizar');
+    } else {
+      ok('Backend configurado', false, 'Falta pegar la anon key en config.js');
+    }
+
+    const allCore = checks.slice(0, 4).every(c => c.c);
+    const cloudReady = cfg.anonKey && reach && table;
+    let verdict;
+    if (allCore && cloudReady && window.SUPA_READY) verdict = ['ok', 'Listo y sincronizando — Franz puede usarlo en cualquier dispositivo.'];
+    else if (allCore && cloudReady) verdict = ['pend', 'Todo OK. Falta solo iniciar sesión para activar la sincronización en la nube.'];
+    else if (allCore && cfg.anonKey && reach && !table) verdict = ['pend', 'La app funciona. Falta crear la tabla en Supabase (pegar el SQL) para el respaldo en la nube.'];
+    else if (allCore) verdict = ['pend', 'La app funciona 100% en este dispositivo. La nube es opcional.'];
+    else verdict = ['off', 'Hay algo que revisar — mirá los ✗ de arriba.'];
+
+    const body = $('#diagBody'); if (!body) return;
+    body.innerHTML = `<div style="display:flex;flex-direction:column;gap:9px">
+      ${checks.map(c => `<div style="display:flex;align-items:flex-start;gap:10px">
+        <span style="color:${c.c ? 'var(--c-income)' : 'var(--c-expense)'};font-weight:800;font-size:16px;line-height:1.3">${c.c ? '✓' : '✗'}</span>
+        <div><div style="font-weight:600">${esc(c.n)}</div>${c.hint && !c.c ? `<div class="sub" style="color:var(--c-muted);font-size:12px">${esc(c.hint)}</div>` : ''}</div>
+      </div>`).join('')}
+      <div class="badge ${verdict[0] === 'ok' ? 'ok' : verdict[0] === 'pend' ? 'pend' : 'off'}" style="margin-top:8px;align-self:flex-start;white-space:normal;line-height:1.5;padding:10px 14px">${esc(verdict[1])}</div>
+    </div>`;
   },
 
   // ============================================================

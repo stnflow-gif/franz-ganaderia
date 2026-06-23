@@ -7,5 +7,5 @@
 
 window.SUPA_CONFIG = {
   url: 'https://bbigctdwpncgmgrfcfnx.supabase.co',
-  anonKey: '', // <-- pegá acá la anon key (empieza con eyJ... role "anon", o sb_publishable_...)
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJiaWdjdGR3cG5jZ21ncmZjZm54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjU5OTYsImV4cCI6MjA5NzIwMTk5Nn0.OZa83xPD2alfBT19VNlYAS_xzsHMug9TDgli2PAsxZA',
 };

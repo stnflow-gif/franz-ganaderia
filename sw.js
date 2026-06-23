@@ -1,5 +1,5 @@
 /* Service Worker — cache offline (app shell) */
-const CACHE = 'dyck-v12';
+const CACHE = 'dyck-v13';
 const ASSETS = [
   './', './index.html',
   './assets/css/app.css',
