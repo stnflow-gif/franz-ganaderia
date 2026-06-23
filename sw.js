@@ -1,5 +1,8 @@
-/* Service Worker — cache offline (app shell) */
-const CACHE = 'dyck-v14';
+/* Service Worker — cache offline (app shell)
+   Funciona offline tras la 1ª carga online. Nota: el SW solo corre en
+   https o localhost (no en file://); por eso, para offline real, hostear
+   en Cloudflare Pages. Los datos igual viven en localStorage. */
+const CACHE = 'dyck-v15';
 const ASSETS = [
   './', './index.html',
   './assets/css/app.css',
@@ -22,14 +25,22 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const { request } = e;
   if (request.method !== 'GET') return;
-  // No cachear llamadas a Supabase (siempre red)
+  // Llamadas a Supabase (datos/auth): siempre red, nunca cache.
   if (request.url.includes('supabase.co')) return;
+
+  // Navegación (abrir la app): red primero, cae a index.html cacheado offline.
+  if (request.mode === 'navigate') {
+    e.respondWith(fetch(request).catch(() => caches.match('./index.html', { ignoreSearch: true })));
+    return;
+  }
+
+  // Resto: cache primero (ignorando ?v=), y si no, red + guardar copia.
   e.respondWith(
-    caches.match(request).then(cached => cached ||
+    caches.match(request, { ignoreSearch: true }).then(cached => cached ||
       fetch(request).then(res => {
         const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(request, copy)).catch(()=>{});
+        caches.open(CACHE).then(c => c.put(request, copy)).catch(() => {});
         return res;
-      }).catch(() => caches.match('./index.html')))
+      }).catch(() => caches.match('./index.html', { ignoreSearch: true })))
   );
 });
