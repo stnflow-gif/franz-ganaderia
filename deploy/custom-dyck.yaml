@@ -1,0 +1,28 @@
+{
+  "http": {
+    "routers": {
+      "https-custom-dyck-0": {
+        "rule": "Host(`dyck.stnflow.online`)",
+        "entryPoints": ["https"],
+        "tls": { "certResolver": "letsencrypt" },
+        "service": "custom-dyck-0",
+        "priority": 60
+      },
+      "http-custom-dyck-0": {
+        "rule": "Host(`dyck.stnflow.online`)",
+        "entryPoints": ["http"],
+        "middlewares": ["redirect-to-https"],
+        "service": "custom-dyck-0",
+        "priority": 60
+      }
+    },
+    "services": {
+      "custom-dyck-0": {
+        "loadBalancer": {
+          "servers": [{ "url": "http://stn_agency_client-sites:80/" }],
+          "passHostHeader": true
+        }
+      }
+    }
+  }
+}
