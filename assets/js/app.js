@@ -347,29 +347,56 @@ const App = {
     return h;
   },
 
-  // ----- Animales (registro por lotes / cantidad) -----
+  // ----- Animales (nacimientos por cantidad) + muertes del hato -----
   gan_animales() {
     const all = Store.animals();
-    const baja = a => { const m = Store.loteMuertos(a), v = Store.loteVendidos(a); const parts = [];
-      if (m) parts.push(`<span class="badge pend">${m} muerta${m > 1 ? 's' : ''}</span>`);
-      if (v) parts.push(`<span class="badge off">${v} vendida${v > 1 ? 's' : ''}</span>`);
-      return parts.join(' ') || '—'; };
-    const table = all.length ? `<div class="table-wrap"><table class="table">
-      <thead><tr><th>#</th><th>Categoría</th><th>Raza</th><th class="num">Vivas</th><th class="num">Nacidas</th><th>Edad</th><th>Muertas</th><th>Acciones</th></tr></thead>
+    const deaths = Store.deaths();
+    const nacTable = all.length ? `<div class="table-wrap"><table class="table">
+      <thead><tr><th>#</th><th>Categoría</th><th>Raza</th><th class="num">Cantidad</th><th>Edad</th><th>Fecha</th><th>Acciones</th></tr></thead>
       <tbody>${all.slice().reverse().map((a, i) => `<tr>
         <td><b>#${all.length - i}</b></td><td>${esc(a.categoria)}</td><td>${esc(a.raza || '—')}</td>
-        <td class="num"><b>${Store.loteVivos(a)}</b></td><td class="num">${Store.loteTotal(a)}</td>
-        <td>${a.edad_meses || 0} m</td><td>${baja(a)}</td>
+        <td class="num"><b>${Store.loteTotal(a)}</b></td><td>${a.edad_meses || 0} m</td><td>${fdate(a.fecha_ingreso)}</td>
         <td class="actions">
-          ${Store.loteVivos(a) > 0 ? `<button class="iconbtn danger" data-kill="${a.id}" title="Registrar muerte"><span data-icon="skull" data-size="16"></span></button>` : ''}
           <button class="iconbtn" data-edit="${a.id}" title="Editar"><span data-icon="edit" data-size="16"></span></button>
           <button class="iconbtn danger" data-del="${a.id}" title="Eliminar"><span data-icon="trash" data-size="16"></span></button>
-        </td></tr>`).join('')}</tbody></table></div>` : this.emptyState('cow', 'Sin nacimientos registrados. Las crías nacidas en el campo se registran acá; los comprados van en Compras.');
-    return `<p class="muted" style="font-size:13px;margin-bottom:14px">Cabezas vivas totales = <b>nacimientos vivos + comprados − vendidos</b>. Acá registrás los <b>nacimientos</b>; los comprados están en <b>Compras</b>.</p>`
+        </td></tr>`).join('')}</tbody></table></div>` : this.emptyState('cow', 'Sin nacimientos. Las crías del campo se registran acá; los comprados van en Compras.');
+    const deathTable = deaths.length ? `<div class="table-wrap"><table class="table">
+      <thead><tr><th>Fecha</th><th>Categoría</th><th>Motivo</th><th class="num">Cabezas</th><th></th></tr></thead>
+      <tbody>${deaths.slice().reverse().map(d => `<tr><td>${fdate(d.fecha)}</td><td>${esc(d.categoria || '—')}</td>
+        <td><span style="display:inline-flex;align-items:center;gap:7px"><span data-icon="skull" data-size="15"></span>${esc(d.motivo)}</span></td>
+        <td class="num"><b>${d.cantidad}</b></td>
+        <td class="actions"><button class="iconbtn danger" data-deldeath="${d.id}" title="Eliminar"><span data-icon="trash" data-size="16"></span></button></td>
+      </tr>`).join('')}</tbody></table></div>` : this.emptyState('skull', 'Sin muertes registradas.');
+    return `<p class="muted" style="font-size:13px;margin-bottom:14px">Cabezas vivas = <b>nacidas + compradas − vendidas − muertas</b>. Las muertes (de nacidas o compradas) se registran con el botón rojo.</p>`
       + this.miniStats([
-      ['Cabezas vivas (total)', Store.headCount(), 'cow', 'income'], ['Nacimientos vivos', Store.bornAlive(), 'sparkles', ''],
-      ['Comprados', Store.boughtHeads(), 'cart', ''], ['Muertas', Store.totalMuertes(), 'skull', 'expense'],
-    ]) + this.panelAdd('Nacimientos registrados', 'Registrar nacimiento', 'plus', table);
+      ['Cabezas vivas (total)', Store.headCount(), 'cow', 'income'], ['Nacidas', Store.bornHeads(), 'sparkles', ''],
+      ['Compradas', Store.boughtHeads(), 'cart', ''], ['Muertas', Store.totalMuertes(), 'skull', 'expense'],
+    ])
+    + `<div class="panel"><div class="panel-head"><h3>Hato — nacimientos</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-danger btn-sm" id="addDeath"><span data-icon="skull"></span> Registrar muerte</button>
+          <button class="btn btn-primary btn-sm" id="subAdd"><span data-icon="plus"></span> Registrar nacimiento</button>
+        </div></div><div class="panel-body">${nacTable}</div></div>`
+    + `<div class="section"><div class="section-title"><span data-icon="skull"></span> Muertes registradas</div>
+        <div class="panel"><div class="panel-body">${deathTable}</div></div></div>`;
+  },
+  // Botón grande y claro para registrar muertes del hato (nacidas o compradas)
+  deathModal() {
+    const body = `<p class="sub" style="margin-bottom:16px;color:var(--c-muted)">Registrá las cabezas que murieron. Se descuentan del total del hato.</p>
+      <div class="form-grid">
+        <div class="field"><label>¿Cuántas murieron? <span class="req">*</span></label><div class="control"><input type="number" id="dCant" min="1" value="1" autofocus></div></div>
+        <div class="field"><label>Categoría (opcional)</label><div class="control"><input id="dCat" list="dl-animalcats" placeholder="Ej: Vaca, Ternero..."></div></div>
+        <div class="field col-2"><label>Motivo <span class="req">*</span></label><div class="control"><input id="dMot" list="dl-motivos" placeholder="Ej: enfermedad, accidente, parto, robo..."></div></div>
+        <div class="field col-2"><label>Fecha</label><div class="control"><input type="date" id="dFecha" value="${Store.today()}"></div></div>
+      </div>`;
+    this.openModal('Registrar muerte', body, [
+      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
+      { label: 'Registrar muerte', cls: 'btn-danger', icon: 'skull', fn: () => {
+        const c = +$('#dCant').value || 0; if (c < 1) return toast('Ingresá cuántas murieron');
+        Store.addDeath({ cantidad: c, motivo: $('#dMot').value.trim() || 'Sin especificar', categoria: $('#dCat').value.trim(), fecha: $('#dFecha').value });
+        this.closeModal(); toast('Muerte registrada'); this.refresh();
+      } },
+    ]);
   },
 
   // ----- Compras -----
@@ -542,9 +569,10 @@ const App = {
       $$('[data-dele]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeEmployee(b.dataset.dele)));
     }
     if (t === 'animales') {
-      $$('[data-kill]', root).forEach(b => b.onclick = () => this.killAnimalModal(b.dataset.kill));
+      const ad = $('#addDeath', root); if (ad) ad.onclick = () => this.deathModal();
       $$('[data-edit]', root).forEach(b => b.onclick = () => this.formAnimal(b.dataset.edit));
       $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeAnimal(b.dataset.del)));
+      $$('[data-deldeath]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeDeath(b.dataset.deldeath)));
     }
     if (t === 'prestamos') {
       $$('[data-payloan]', root).forEach(b => b.onclick = () => this.payLoanModal(b.dataset.payloan));
@@ -616,21 +644,19 @@ const App = {
 
   formRecurring(id, domain) {
     const r = id ? Store.recurring().find(x => x.id === id) || Store.all().recurring.find(x => x.id === id) : {};
-    const cats = GASTO_CATS[domain || r.domain || 'ganaderia'];
     const banks = Store.banks();
     const body = `<div class="form-grid">
-      <div class="field col-2"><label>Nombre <span class="req">*</span></label><div class="control"><input id="rcNom" value="${esc(r.nombre || '')}" placeholder="Ej: Alquiler del campo"></div></div>
+      <div class="field col-2"><label>¿Qué gasto fijo es? <span class="req">*</span></label><div class="control"><input id="rcNom" list="dl-gastos" value="${esc(r.nombre || '')}" placeholder="Ej: Alquiler del campo, Sueldo del vaquero..."></div></div>
       <div class="field"><label>Monto mensual <span class="req">*</span></label><div class="control"><span class="prefix">Bs</span><input type="number" id="rcMonto" value="${r.monto || ''}" placeholder="0"></div></div>
       <div class="field"><label>Día del mes</label><div class="control"><input type="number" id="rcDia" min="1" max="31" value="${r.dia || 1}"></div></div>
-      <div class="field"><label>Categoría</label><select class="control" id="rcCat">${opt(cats, r.categoria)}</select></div>
-      <div class="field"><label>Banco</label><select class="control" id="rcBank"><option value="">Ninguno</option>${banks.map(b => `<option value="${b.id}" ${r.bank_id === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></div>
+      <div class="field col-2"><label>Banco</label><select class="control" id="rcBank"><option value="">Ninguno</option>${banks.map(b => `<option value="${b.id}" ${r.bank_id === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></div>
     </div>`;
     this.openModal(id ? 'Editar gasto fijo' : 'Nuevo gasto fijo', body, [
       { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
       { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: () => {
         const nom = $('#rcNom').value.trim(), monto = +$('#rcMonto').value;
         if (!nom) return toast('Falta el nombre'); if (!monto) return toast('Falta el monto');
-        const data = { domain: domain || r.domain || 'ganaderia', nombre: nom, monto, dia: +$('#rcDia').value || 1, categoria: $('#rcCat').value, bank_id: $('#rcBank').value || null };
+        const data = { domain: domain || r.domain || 'ganaderia', nombre: nom, monto, dia: +$('#rcDia').value || 1, categoria: nom, bank_id: $('#rcBank').value || null };
         id ? Store.updateRecurring(id, data) : Store.addRecurring(data);
         this.closeModal(); toast('Gasto fijo guardado'); this.refresh();
       } },
@@ -727,42 +753,6 @@ const App = {
       } },
     ]);
   },
-  killAnimalModal(id) {
-    const a = Store.animals().find(x => x.id === id); if (!a) return;
-    const vivas = Store.loteVivos(a);
-    const body = `<p class="sub" style="margin-bottom:16px;color:var(--c-muted)">Registrar muerte del lote <b>${esc(a.categoria)}${a.raza ? ' · ' + esc(a.raza) : ''}</b> — disponibles: <b>${vivas}</b> cabezas</p>
-      <div class="form-grid">
-        <div class="field"><label>¿Cuántas murieron? <span class="req">*</span></label><div class="control"><input type="number" id="kCant" min="1" max="${vivas}" value="1"></div></div>
-        <div class="field"><label>Motivo</label><select class="control" id="kMot">${opt(DEATH_REASONS, 'Enfermedad')}</select></div>
-        <div class="field col-2"><label>Fecha</label><div class="control"><input type="date" id="kFecha" value="${Store.today()}"></div></div>
-      </div>`;
-    this.openModal('Registrar muerte', body, [
-      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
-      { label: 'Registrar muerte', cls: 'btn-danger', icon: 'skull', fn: () => {
-        const c = +$('#kCant').value || 0; if (c < 1) return toast('Ingresá cuántas murieron');
-        Store.registrarMuerte(id, { cantidad: c, motivo: $('#kMot').value, fecha: $('#kFecha').value });
-        this.closeModal(); toast('Muerte registrada'); this.refresh();
-      } },
-    ]);
-  },
-  ventaLoteModal(id) {
-    const a = Store.animals().find(x => x.id === id); if (!a) return;
-    const vivas = Store.loteVivos(a);
-    const body = `<p class="sub" style="margin-bottom:16px;color:var(--c-muted)">Sacar cabezas del inventario del lote <b>${esc(a.categoria)}${a.raza ? ' · ' + esc(a.raza) : ''}</b> — disponibles: <b>${vivas}</b><br><span style="font-size:12px">Esto descuenta del inventario. El dinero de la venta se registra aparte en la pestaña <b>Ventas</b>.</span></p>
-      <div class="form-grid">
-        <div class="field"><label>¿Cuántas salieron? <span class="req">*</span></label><div class="control"><input type="number" id="vlCant" min="1" max="${vivas}" value="1"></div></div>
-        <div class="field"><label>Fecha</label><div class="control"><input type="date" id="vlFecha" value="${Store.today()}"></div></div>
-      </div>`;
-    this.openModal('Salida / venta del inventario', body, [
-      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
-      { label: 'Registrar salida', cls: 'btn-primary', icon: 'check', fn: () => {
-        const c = +$('#vlCant').value || 0; if (c < 1) return toast('Ingresá cuántas salieron');
-        Store.registrarVentaLote(id, { cantidad: c, fecha: $('#vlFecha').value });
-        this.closeModal(); toast('Salida registrada'); this.refresh();
-      } },
-    ]);
-  },
-
   formCompra() {
     this.formItems = [];
     const banks = Store.banks();
@@ -935,12 +925,11 @@ const App = {
 
   // ----- Formulario de gasto (área fija) -----
   formExpense(domain) {
-    const cats = GASTO_CATS[domain]; const banks = Store.banks();
+    const banks = Store.banks();
     const label = domain === 'personal' ? 'Gasto personal' : 'Gasto de ganadería';
-    // Personal: texto libre (sin categorías). Ganadería: mantiene categorías.
-    const catField = domain === 'personal'
-      ? `<div class="field col-2"><label>¿Qué fue y dónde lo compraste?</label><div class="control"><input id="exCat" list="dl-gastos" placeholder="Ej: Almuerzo en el mercado, repuesto en la ferretería..."></div></div>`
-      : `<div class="field"><label>Categoría</label><select class="control" id="exCat">${opt(cats)}</select></div>`;
+    // Sin categorías: Franz escribe libremente en qué fue el gasto.
+    const ph = domain === 'personal' ? 'Ej: Almuerzo en el mercado, repuesto en la ferretería...' : 'Ej: Vacunas, forraje, combustible, sueldo del vaquero...';
+    const catField = `<div class="field col-2"><label>¿En qué fue el gasto?</label><div class="control"><input id="exCat" list="dl-gastos" placeholder="${ph}"></div></div>`;
     const body = `<div class="form-grid">
         <div class="field"><label>Monto <span class="req">*</span></label><div class="control"><span class="prefix">Bs</span><input class="amount-big" type="number" id="exMonto" placeholder="0"></div></div>
         <div class="field"><label>Fecha</label><div class="control"><input type="date" id="exFecha" value="${Store.today()}"></div></div>
@@ -954,7 +943,7 @@ const App = {
       { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: async () => {
         const monto = +$('#exMonto').value; if (!monto || monto <= 0) return toast('Ingresá un monto válido');
         const comp = await this.fileToDataURL($('#exComp'));
-        const categoria = domain === 'personal' ? ($('#exCat').value.trim() || 'Gasto personal') : $('#exCat').value;
+        const categoria = $('#exCat').value.trim() || (domain === 'personal' ? 'Gasto personal' : 'Gasto ganadería');
         Store.addExpense({ domain, fecha: $('#exFecha').value, categoria, bank_id: $('#exBank').value || null, monto, descripcion: $('#exDesc').value.trim(), comprobante: comp });
         this.closeModal(); toast('Gasto registrado'); this.refresh();
       } },
@@ -1391,7 +1380,9 @@ const App = {
       + dl('dl-gastos', [...Store.expenses().map(e => e.categoria), ...Store.expenses().map(e => e.descripcion)])
       + dl('dl-ingresos', Store.incomes().map(i => i.categoria))
       + dl('dl-prestamistas', Store.loans().map(l => l.prestamista))
-      + dl('dl-empleados', Store.employees().map(e => e.nombre));
+      + dl('dl-empleados', Store.employees().map(e => e.nombre))
+      + dl('dl-motivos', [...Store.deaths().map(d => d.motivo), 'Enfermedad', 'Accidente', 'Parto', 'Depredador', 'Robo', 'Vejez'])
+      + dl('dl-animalcats', [...ANIMAL_CATS, ...Store.animals().map(a => a.categoria), ...Store.deaths().map(d => d.categoria)]);
   },
   openModal(title, body, actions = []) {
     $('#modalTitle').textContent = title;

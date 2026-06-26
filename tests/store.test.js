@@ -46,20 +46,19 @@ check('Gasto personal guardado', S.expenses().some(x => x.domain === 'personal' 
 check('Ingreso guardado', S.incomes().some(x => x.monto === 3000));
 check('Comprobante por defecto null', S.expenses()[0].comprobante === null);
 
-// 3. Animales por lotes (cantidad) y muertes
+// 3. Animales (nacimientos) + libro de muertes
 console.log('\nAnimales y muertes:');
-const a1 = S.addAnimal({ categoria: 'Vaca', cantidad: 50 });
-const a2 = S.addAnimal({ categoria: 'Toro', cantidad: 10 });
-const a3 = S.addAnimal({ categoria: 'Vaquilla', cantidad: 20 });
-S.registrarMuerte(a3.id, { cantidad: 3, motivo: 'Enfermedad' });
-check('3 lotes registrados', S.animals().length === 3);
-check('Cabezas vivas = 77 (80 - 3 muertas)', S.headCount() === 77);
+S.addAnimal({ categoria: 'Vaca', cantidad: 50 });
+S.addAnimal({ categoria: 'Toro', cantidad: 10 });
+S.addAnimal({ categoria: 'Vaquilla', cantidad: 20 });
+check('3 nacimientos registrados', S.animals().length === 3);
+check('Nacidas = 80', S.bornHeads() === 80);
+S.addDeath({ cantidad: 3, motivo: 'Enfermedad', categoria: 'Vaquilla' });
+check('Cabezas vivas = 77 (80 nacidas - 3 muertas)', S.headCount() === 77);
 check('Total muertes = 3 cabezas', S.totalMuertes() === 3);
 check('Muerte con motivo correcto', S.deathsByReason()[0].motivo === 'Enfermedad' && S.deathsByReason()[0].n === 3);
-S.registrarVentaLote(a1.id, { cantidad: 20 });
-check('Salida de inventario descuenta vivas (57)', S.headCount() === 57);
-check('Total vendidas/salidas = 20', S.totalVendidas() === 20);
-check('No se puede matar más de las vivas', (() => { S.registrarMuerte(a2.id, { cantidad: 999, motivo: 'Accidente' }); return S.loteVivos(S.animals().find(x => x.id === a2.id)) === 0; })());
+S.addDeath({ cantidad: 2, motivo: 'Accidente' });
+check('Suma muertes de 2 registros = 5', S.totalMuertes() === 5 && S.headCount() === 75);
 
 // 4. Compras / Ventas
 console.log('\nCompras / Ventas:');

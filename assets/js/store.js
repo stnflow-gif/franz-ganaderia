@@ -25,6 +25,7 @@ const Store = (() => {
     payables: [],      // {id, fecha, proveedor, descripcion, domain, monto_total, pagado, vencimiento, estado}
     recurring: [],     // {id, tipo:'gasto', domain, categoria, nombre, monto, bank_id, dia, active, paid:{'YYYY-MM':expenseId}}
     loans: [],         // {id, prestamista, monto, fecha, vencimiento, interes_pct, notas, bank_id, pagos:[{id,monto,fecha,bank_id}]}
+    deaths: [],        // {id, cantidad, motivo, categoria, fecha} — muertes del hato (nacidas o compradas)
     settings: { theme: 'glass', currency: 'Bs', onboarded: false, user: null },
   });
 
@@ -180,55 +181,39 @@ const Store = (() => {
     loanBalance(l) { return Math.max(0, (+l.monto || 0) - this.loanPaid(l)); },
     loansPendingTotal() { return db.loans.reduce((s, l) => s + this.loanBalance(l), 0); },
 
-    // ---------- Animales (registro individual del hato) ----------
+    // ---------- Animales (nacimientos por cantidad) ----------
     animals: () => db.animals,
-    // Helpers de lote expuestos a la UI
-    loteTotal: totalDe, loteMuertos: muertosDe, loteVendidos: vendidosDe, loteVivos: vivosDe,
-    livingAnimals: () => db.animals.filter(a => vivosDe(a) > 0),
+    loteTotal: totalDe,
     addAnimal(a) {
       const cantidad = Math.max(1, Math.round(+a.cantidad || 1));
-      const row = { id: uid(), categoria: a.categoria || 'Vaca', raza: a.raza || '',
-        edad_meses: +a.edad_meses || 0, peso: +a.peso || 0, origen: a.origen || 'compra',
-        precio: +a.precio || 0, fecha_ingreso: a.fecha_ingreso || today(),
-        cantidad, muertos: 0, vendidos: 0, eventos: [], created_at: now() };
+      const row = { id: uid(), categoria: a.categoria || 'Ternero', raza: a.raza || '',
+        edad_meses: +a.edad_meses || 0, peso: +a.peso || 0, origen: 'nacimiento',
+        precio: +a.precio || 0, fecha_ingreso: a.fecha_ingreso || today(), cantidad, created_at: now() };
       db.animals.push(row); commit('insert', 'animals', row); return row;
     },
     updateAnimal(id, patch) { const a = db.animals.find(x => x.id === id); if (!a) return;
       if (patch.cantidad != null) patch.cantidad = Math.max(1, Math.round(+patch.cantidad || 1));
       Object.assign(a, patch); commit('update', 'animals', a); },
-    // Registrar muerte de N cabezas dentro de un lote
-    registrarMuerte(id, info) { const a = db.animals.find(x => x.id === id); if (!a) return;
-      const c = Math.min(vivosDe(a), Math.max(1, Math.round(+info.cantidad || 1))); if (c <= 0) return;
-      a.cantidad = totalDe(a); a.muertos = muertosDe(a) + c; a.vendidos = vendidosDe(a);
-      delete a.estado; delete a.fecha_baja; delete a.motivo;
-      a.eventos = a.eventos || []; a.eventos.push({ tipo: 'muerte', cantidad: c, motivo: info.motivo || 'Desconocido', fecha: info.fecha || today() });
-      commit('update', 'animals', a); },
-    // Registrar venta/salida de N cabezas del inventario (lo financiero va en Ventas)
-    registrarVentaLote(id, info) { const a = db.animals.find(x => x.id === id); if (!a) return;
-      const c = Math.min(vivosDe(a), Math.max(1, Math.round(+info.cantidad || 1))); if (c <= 0) return;
-      a.cantidad = totalDe(a); a.muertos = muertosDe(a); a.vendidos = vendidosDe(a) + c;
-      delete a.estado; delete a.fecha_baja;
-      a.eventos = a.eventos || []; a.eventos.push({ tipo: 'venta', cantidad: c, fecha: info.fecha || today() });
-      commit('update', 'animals', a); },
     removeAnimal(id) { db.animals = db.animals.filter(a => a.id !== id); commit('delete', 'animals', { id }); },
-    deaths: () => db.animals.filter(a => muertosDe(a) > 0),
-    totalMuertes() { return db.animals.reduce((s, a) => s + muertosDe(a), 0); },
-    totalVendidas() { return db.animals.reduce((s, a) => s + vendidosDe(a), 0); },
+    bornHeads() { return db.animals.reduce((s, a) => s + (+a.cantidad || 0), 0); },
+
+    // ---------- Muertes (libro independiente: cubre nacidas Y compradas) ----------
+    deaths: () => db.deaths,
+    addDeath(d) { const row = { id: uid(), cantidad: Math.max(1, Math.round(+d.cantidad || 1)),
+      motivo: d.motivo || 'Sin especificar', categoria: d.categoria || '', fecha: d.fecha || today(), created_at: now() };
+      db.deaths.push(row); commit('insert', 'deaths', row); return row; },
+    removeDeath(id) { db.deaths = db.deaths.filter(x => x.id !== id); commit('delete', 'deaths', { id }); },
+    totalMuertes() { return db.deaths.reduce((s, d) => s + (+d.cantidad || 0), 0); },
     deathsByReason() {
-      const m = {};
-      db.animals.forEach(a => {
-        if (a.eventos && a.eventos.length) a.eventos.filter(e => e.tipo === 'muerte').forEach(e => { const k = e.motivo || 'Desconocido'; m[k] = (m[k] || 0) + (+e.cantidad || 0); });
-        else if (muertosDe(a) > 0) { const k = a.motivo || 'Desconocido'; m[k] = (m[k] || 0) + muertosDe(a); }
-      });
+      const m = {}; db.deaths.forEach(d => { const k = d.motivo || 'Sin especificar'; m[k] = (m[k] || 0) + (+d.cantidad || 0); });
       return Object.entries(m).map(([motivo, n]) => ({ motivo, n })).sort((a, b) => b.n - a.n);
     },
 
     // ---------- Inventario de hato ----------
-    // Cabezas vivas = nacimientos vivos (registro) + comprados − vendidos
-    bornAlive() { return db.animals.reduce((s, a) => s + vivosDe(a), 0); },
+    // Cabezas vivas = nacidas + compradas − vendidas − muertas
     boughtHeads() { return sum(db.purchases.flatMap(p => p.items || []), it => +it.cantidad || 0); },
     soldHeads() { return sum(db.sales.flatMap(s => s.items || []), it => +it.cantidad || 0); },
-    headCount() { return this.bornAlive() + this.boughtHeads() - this.soldHeads(); },
+    headCount() { return this.bornHeads() + this.boughtHeads() - this.soldHeads() - this.totalMuertes(); },
 
     // ---------- Dashboard financiero ----------
     finance(month) {
@@ -348,9 +333,9 @@ const Store = (() => {
       const l2 = this.addAnimal({ categoria: 'Toro', raza: 'Brahman', cantidad: 12, edad_meses: 40, peso: 620, origen: 'compra', fecha_ingreso: mAgo(4) });
       this.addAnimal({ categoria: 'Vaquilla', raza: 'Gyr', cantidad: 45, edad_meses: 18, peso: 260, origen: 'nacimiento', fecha_ingreso: mAgo(2) });
       this.addAnimal({ categoria: 'Novillo', raza: 'Criolla', cantidad: 30, edad_meses: 24, peso: 340, origen: 'compra', fecha_ingreso: mAgo(1) });
-      // Muertes con motivo (por cantidad)
-      this.registrarMuerte(l1.id, { cantidad: 3, fecha: mAgo(1), motivo: 'Enfermedad' });
-      this.registrarMuerte(l2.id, { cantidad: 1, fecha: mAgo(0), motivo: 'Accidente' });
+      // Muertes con motivo (libro de muertes)
+      this.addDeath({ cantidad: 3, fecha: mAgo(1), motivo: 'Enfermedad', categoria: 'Vaca' });
+      this.addDeath({ cantidad: 1, fecha: mAgo(0), motivo: 'Accidente', categoria: 'Toro' });
       window.dispatchEvent(new CustomEvent('store:changed'));
     },
   };
