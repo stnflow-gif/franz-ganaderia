@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=26">
+  <link rel="stylesheet" href="assets/css/app.css?v=27">
 </head>
 <body>
 
@@ -41,6 +41,11 @@
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="logo-box"><img src="assets/img/logo.jpg" alt="Dyck Manantial"></div>
+      <div class="side-search">
+        <span data-icon="search" data-size="16"></span>
+        <input id="globalSearch" type="text" placeholder="Buscar en todo…" autocomplete="off" aria-label="Buscar en todo">
+        <div class="side-results" id="globalResults"></div>
+      </div>
       <nav class="nav" id="nav">
         <button class="on" data-go="dashboard"><span class="ic-box" data-icon="home"></span><span class="lbl">Dashboard<small>Resumen general</small></span></button>
         <button data-go="ganaderia"><span class="ic-box" data-icon="cow"></span><span class="lbl">Ganadería<small>Operación del campo</small></span></button>
@@ -99,11 +104,11 @@
 
   <div id="toast"></div>
 
-  <script src="assets/js/config.js?v=29"></script>
-  <script src="assets/js/icons.js?v=29"></script>
-  <script src="assets/js/store.js?v=29"></script>
-  <script src="assets/js/app.js?v=29"></script>
-  <script src="assets/js/sync.js?v=29"></script>
+  <script src="assets/js/config.js?v=30"></script>
+  <script src="assets/js/icons.js?v=30"></script>
+  <script src="assets/js/store.js?v=30"></script>
+  <script src="assets/js/app.js?v=30"></script>
+  <script src="assets/js/sync.js?v=30"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));

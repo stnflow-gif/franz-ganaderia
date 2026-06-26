@@ -110,6 +110,12 @@ const App = {
     const bl = $('#btnLogin'); if (bl) bl.onclick = doLogin;
     $('#btnLogout').onclick = async () => { if (window.Sync) { try { await window.Sync.signOut(); } catch (e) {} } Store.setSetting('user', null); location.reload(); };
     $$('#nav button, #btnSettings').forEach(b => b.onclick = () => { this.go(b.dataset.go); this.closeDrawer(); });
+    const gs = $('#globalSearch');
+    if (gs) {
+      gs.oninput = () => this.runGlobalSearch(gs.value);
+      gs.onfocus = () => { if (gs.value.trim()) this.runGlobalSearch(gs.value); };
+      document.addEventListener('click', (e) => { if (!e.target.closest('.side-search')) { const r = $('#globalResults'); if (r) r.classList.remove('open'); } });
+    }
     $('#fabQuick').onclick = () => this.quickExpense();
     $('#ham').onclick = () => $('#sidebar').classList.toggle('open') | $('#scrim').classList.toggle('open');
     $('#scrim').onclick = () => this.closeDrawer();
@@ -176,6 +182,41 @@ const App = {
     $('#mobileTitle').textContent = SECTION_TITLES[section] || '';
     this.render(section);
     $('.main').scrollTop = 0; window.scrollTo(0, 0);
+  },
+  // Ir a una sub-pestaña de Ganadería (o a otra sección)
+  goSub(section, subtab) { if (section === 'ganaderia' && subtab) this.ganTab = subtab; this.go(section); },
+
+  // ---------- Buscador global (sidebar) ----------
+  runGlobalSearch(raw) {
+    const box = $('#globalResults'); if (!box) return;
+    const q = (raw || '').trim().toLowerCase();
+    if (q.length < 2) { box.innerHTML = `<div class="sr-hint">Escribí al menos 2 letras para buscar…</div>`; box.classList.add('open'); return; }
+    const res = [];
+    const add = (text, sub, icon, section, subtab) => { if ((text + ' ' + (sub || '')).toLowerCase().includes(q)) res.push({ text, sub, icon, section, subtab }); };
+    Store.expenses().forEach(e => add(e.categoria || 'Gasto', `Gasto ${e.domain === 'personal' ? 'personal' : 'ganadería'} · ${money(e.monto)} · ${fdate(e.fecha)}`, 'arrowDown', e.domain === 'personal' ? 'personales' : 'ganaderia', 'gastos'));
+    Store.incomes().forEach(i => add(i.categoria || 'Ingreso', `Ingreso · ${money(i.monto)} · ${fdate(i.fecha)}`, 'coins', 'ingresos'));
+    Store.sales().forEach(s => add('Venta · ' + (s.cliente || 'Cliente'), `${money(s.total)} · ${fdate(s.fecha)}`, 'trending', 'ganaderia', 'ventas'));
+    Store.purchases().forEach(p => add('Compra · ' + (p.proveedor || 'Proveedor'), `${money(p.total)} · ${fdate(p.fecha)}`, 'cart', 'ganaderia', 'compras'));
+    Store.animals().forEach(a => add(`${a.categoria} ${a.raza || ''}`.trim(), `Nacimiento · ${a.cantidad} cab. · ${fdate(a.fecha_ingreso)}`, 'cow', 'ganaderia', 'animales'));
+    Store.deaths().forEach(d => add('Muerte · ' + d.motivo, `${d.cantidad} cab. · ${d.categoria || ''} · ${fdate(d.fecha)}`, 'skull', 'ganaderia', 'animales'));
+    Store.employees().forEach(e => add(e.nombre, `Empleado · ${e.puesto || ''} · ${e.telefono || ''}`, 'workers', 'ganaderia', 'empleados'));
+    Store.loans().forEach(l => add('Préstamo · ' + l.prestamista, `${money(l.monto)} · saldo ${money(Store.loanBalance(l))}`, 'coins', 'ganaderia', 'prestamos'));
+    Store.payables().forEach(p => add('Deuda · ' + (p.proveedor || ''), `${esc(p.descripcion || '')} · ${money(p.monto_total - p.pagado)} pend.`, 'receipt', p.domain === 'personal' ? 'personales' : 'ganaderia', 'deudas'));
+    Store.tasks().forEach(t => add(t.texto, `Tarea ${t.done ? '(hecha)' : 'pendiente'}${t.fecha ? ' · ' + fdate(t.fecha) : ''}`, 'tasks', 'tareas'));
+    Store.banks().forEach(b => add(b.name, `Banco / cuenta`, 'bank', 'ajustes'));
+    const shown = res.slice(0, 40);
+    box.innerHTML = shown.length
+      ? shown.map((r, i) => `<button class="sr-item" data-sri="${i}"><span class="sr-ic" data-icon="${r.icon}" data-size="16"></span>
+          <span class="sr-txt"><b>${esc(r.text)}</b><small>${esc(r.sub || '')}</small></span></button>`).join('')
+        + (res.length > 40 ? `<div class="sr-hint">+${res.length - 40} más… afiná la búsqueda</div>` : '')
+      : `<div class="sr-hint">Sin resultados para “${esc(raw)}”.</div>`;
+    box.classList.add('open');
+    this.injectIcons(box);
+    $$('.sr-item', box).forEach(b => b.onclick = () => {
+      const r = shown[+b.dataset.sri]; box.classList.remove('open');
+      const gs = $('#globalSearch'); if (gs) gs.value = '';
+      this.goSub(r.section, r.subtab); this.closeDrawer();
+    });
   },
   render(section) {
     const map = { dashboard:'renderDashboard', ganaderia:'renderGanaderia', personales:'renderPersonales',
