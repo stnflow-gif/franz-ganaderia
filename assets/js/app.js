@@ -113,6 +113,9 @@ const App = {
     $('#fabQuick').onclick = () => this.quickExpense();
     $('#ham').onclick = () => $('#sidebar').classList.toggle('open') | $('#scrim').classList.toggle('open');
     $('#scrim').onclick = () => this.closeDrawer();
+    // Abrir el calendario al tocar cualquier parte de un campo de fecha (no solo el iconito)
+    document.addEventListener('click', (e) => { const t = e.target;
+      if (t && t.tagName === 'INPUT' && t.type === 'date') { try { t.showPicker(); } catch (_) {} } });
     $('#modalClose').onclick = () => this.closeModal();
     $('#modalBg').onclick = e => { if (e.target === $('#modalBg')) this.closeModal(); };
   },
