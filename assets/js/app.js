@@ -40,7 +40,7 @@ const opt = (arr, sel) => arr.map(o => `<option ${o === sel ? 'selected' : ''}>$
 
 const DEATH_REASONS = ['Enfermedad', 'Accidente', 'Parto', 'Depredador', 'Robo', 'Vejez', 'Desconocido', 'Otro'];
 const SECTION_TITLES = { dashboard:'Dashboard', ganaderia:'Ganadería', personales:'Gastos personales',
-  ingresos:'Ingresos', ajustes:'Ajustes' };
+  ingresos:'Ingresos', tareas:'Tareas', ajustes:'Ajustes' };
 
 // ============================================================
 const App = {
@@ -162,7 +162,7 @@ const App = {
   },
   render(section) {
     const map = { dashboard:'renderDashboard', ganaderia:'renderGanaderia', personales:'renderPersonales',
-      ingresos:'renderIngresos', ajustes:'renderAjustes' };
+      ingresos:'renderIngresos', tareas:'renderTareas', ajustes:'renderAjustes' };
     if (map[section]) this[map[section]]();
   },
   refresh() { this.render(this.current); },
@@ -923,6 +923,57 @@ const App = {
     $$('[data-vcinc]', root).forEach(b => b.onclick = () => { const i = Store.incomes().find(x => x.id === b.dataset.vcinc); if (i) this.verComprobante(i.comprobante); });
   },
 
+  // ============================================================
+  //  TAREAS / PENDIENTES
+  // ============================================================
+  renderTareas() {
+    const tasks = Store.tasks();
+    const pend = tasks.filter(t => !t.done);
+    const done = tasks.filter(t => t.done);
+    const today = Store.today();
+    const hoyCount = pend.filter(t => t.fecha === today).length;
+    const sorted = pend.slice().sort((a, b) => {
+      if (!a.fecha && !b.fecha) return (a.created_at || '').localeCompare(b.created_at || '');
+      if (!a.fecha) return 1; if (!b.fecha) return -1; return a.fecha.localeCompare(b.fecha);
+    });
+    const taskRow = t => {
+      const vencida = t.fecha && t.fecha < today, esHoy = t.fecha === today;
+      const badge = t.fecha
+        ? `<span class="badge ${vencida ? 'pend' : esHoy ? 'warn' : 'off'}">${vencida ? 'Vencida · ' : esHoy ? 'Hoy · ' : ''}${fdate(t.fecha)}</span>`
+        : `<span class="badge off">Sin fecha</span>`;
+      return `<div class="task-item ${t.done ? 'done' : ''}">
+        <button class="task-check ${t.done ? 'on' : ''}" data-toggle="${t.id}" title="${t.done ? 'Marcar pendiente' : 'Marcar hecho'}">${t.done ? '<span data-icon="check" data-size="15"></span>' : ''}</button>
+        <div class="task-main"><span class="task-text">${esc(t.texto)}</span> ${badge}</div>
+        <button class="iconbtn danger" data-deltask="${t.id}" title="Eliminar"><span data-icon="trash" data-size="16"></span></button>
+      </div>`;
+    };
+    let h = this.head('Tareas', 'Tu lista de pendientes — que no se te escape nada');
+    h += this.miniStats([['Pendientes', pend.length, 'tasks', pend.length ? 'warn' : ''],
+      ['Para hoy', hoyCount, 'clock', hoyCount ? 'expense' : ''], ['Completadas', done.length, 'check', 'income']]);
+    h += `<div class="panel"><div class="panel-body" style="padding:16px">
+      <div class="task-add">
+        <input id="tkText" placeholder="Escribí una tarea... (ej: vacunar el lote nuevo)" autocomplete="off">
+        <input type="date" id="tkDate" title="Fecha (opcional)">
+        <button class="btn btn-primary" id="tkAdd"><span data-icon="plus"></span> Agregar</button>
+      </div>
+      <p class="muted" style="font-size:12px;margin-top:8px">La fecha es opcional. Sin fecha = pendiente general.</p>
+    </div></div>`;
+    h += `<div class="section"><div class="section-title"><span data-icon="tasks"></span> Pendientes (${pend.length})</div>
+      <div class="panel"><div class="panel-body" style="padding:12px 14px">${sorted.length ? sorted.map(taskRow).join('') : this.emptyState('check', '¡Todo al día! No tenés pendientes.')}</div></div></div>`;
+    if (done.length) h += `<div class="section"><div class="section-title" style="display:flex;align-items:center;gap:8px"><span data-icon="check"></span> Completadas (${done.length})
+        <button class="btn btn-ghost btn-sm" id="tkClear" style="margin-left:auto"><span data-icon="trash"></span> Limpiar</button></div>
+      <div class="panel"><div class="panel-body" style="padding:12px 14px">${done.map(taskRow).join('')}</div></div></div>`;
+    this.paint('tareas', h);
+    const root = $('#screen-tareas');
+    const addFn = () => { const txt = $('#tkText', root).value.trim(); if (!txt) return toast('Escribí una tarea');
+      Store.addTask({ texto: txt, fecha: $('#tkDate', root).value }); this.refresh(); };
+    $('#tkAdd', root).onclick = addFn;
+    $('#tkText', root).onkeydown = (e) => { if (e.key === 'Enter') addFn(); };
+    $$('[data-toggle]', root).forEach(b => b.onclick = () => { Store.toggleTask(b.dataset.toggle); this.refresh(); });
+    $$('[data-deltask]', root).forEach(b => b.onclick = () => { Store.removeTask(b.dataset.deltask); this.refresh(); });
+    const cl = $('#tkClear', root); if (cl) cl.onclick = () => this.confirmDelete(() => Store.clearDoneTasks());
+  },
+
   // ----- Formulario de gasto (área fija) -----
   formExpense(domain) {
     const banks = Store.banks();
@@ -1419,6 +1470,7 @@ const App = {
     { sel: '[data-go="ganaderia"]', title: 'Ganadería', text: 'Todo el campo en un solo lugar: animales (uno por uno, con muertes y motivos), compras, ventas, gastos, gastos FIJOS (sueldos y mensuales) con botón Pagado, empleados y deudas.' },
     { sel: '[data-go="personales"]', title: 'Gastos personales', text: 'Tus salidas personales, separadas de la ganadería: comida, salud, transporte, vivienda. También tus gastos fijos personales.' },
     { sel: '[data-go="ingresos"]', title: 'Ingresos', text: 'Todo lo que entra, ganadería y personal juntos. Las ventas de ganado aparecen acá automáticamente.' },
+    { sel: '[data-go="tareas"]', title: 'Tareas', text: 'Tu lista de pendientes para que no se te olvide nada: con fecha (para un día) o sin fecha (pendiente general). Tildás lo que hacés.' },
     { sel: '#fabQuick', title: 'Gasto rápido', text: 'Para gastos personales que pasan y ya: en segundos cargás monto, banco y qué fue. Los gastos FIJOS (que se repiten cada mes) se cargan en la pestaña Fijos de Ganadería.' },
     { sel: '#btnSettings', title: 'Ajustes', text: 'Tus bancos, el color del sistema, exportar datos o volver a ver este tour cuando quieras.' },
   ],

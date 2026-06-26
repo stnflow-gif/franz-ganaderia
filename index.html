@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=24">
+  <link rel="stylesheet" href="assets/css/app.css?v=25">
 </head>
 <body>
 
@@ -44,6 +44,7 @@
         <button data-go="ganaderia"><span class="ic-box" data-icon="cow"></span><span class="lbl">Ganadería<small>Operación del campo</small></span></button>
         <button data-go="personales"><span class="ic-box" data-icon="arrowDown"></span><span class="lbl">Gastos personales<small>Tus salidas</small></span></button>
         <button data-go="ingresos"><span class="ic-box" data-icon="coins"></span><span class="lbl">Ingresos<small>Todo lo que entra</small></span></button>
+        <button data-go="tareas"><span class="ic-box" data-icon="tasks"></span><span class="lbl">Tareas<small>Pendientes y recordatorios</small></span></button>
       </nav>
       <div class="foot">
         <button class="logout-btn" data-go="ajustes" id="btnSettings"><span data-icon="settings" data-size="16"></span> Ajustes</button>
@@ -69,6 +70,7 @@
       <section class="screen" id="screen-ganaderia"></section>
       <section class="screen" id="screen-personales"></section>
       <section class="screen" id="screen-ingresos"></section>
+      <section class="screen" id="screen-tareas"></section>
       <section class="screen" id="screen-ajustes"></section>
     </main>
   </div>
@@ -95,11 +97,11 @@
 
   <div id="toast"></div>
 
-  <script src="assets/js/config.js?v=25"></script>
-  <script src="assets/js/icons.js?v=25"></script>
-  <script src="assets/js/store.js?v=25"></script>
-  <script src="assets/js/app.js?v=25"></script>
-  <script src="assets/js/sync.js?v=25"></script>
+  <script src="assets/js/config.js?v=26"></script>
+  <script src="assets/js/icons.js?v=26"></script>
+  <script src="assets/js/store.js?v=26"></script>
+  <script src="assets/js/app.js?v=26"></script>
+  <script src="assets/js/sync.js?v=26"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));

@@ -81,6 +81,16 @@ const deudasAntes = S.payables().length;
 S.addPurchase({ proveedor: 'Z', metodo_pago: 'Préstamo', loan_id: pr.id, items: [{ cantidad: 50, precio: 1000 }] });
 check('Compra con préstamo NO genera deuda nueva', S.payables().length === deudasAntes);
 
+// 4c. Tareas
+console.log('\nTareas:');
+const tk = S.addTask({ texto: 'Vacunar lote', fecha: '2026-07-01' });
+S.addTask({ texto: 'Llamar al veterinario' });
+check('2 tareas, 2 pendientes', S.tasks().length === 2 && S.pendingTasks() === 2);
+S.toggleTask(tk.id);
+check('Marcar tarea hecha baja pendientes a 1', S.pendingTasks() === 1);
+S.clearDoneTasks();
+check('Limpiar completadas deja 1 tarea', S.tasks().length === 1);
+
 // 5. Empleados y sueldos
 console.log('\nEmpleados y sueldos:');
 const e1 = S.addEmployee({ nombre: 'Ángel', salario: 1500 });

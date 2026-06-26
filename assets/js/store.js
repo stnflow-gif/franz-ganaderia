@@ -26,6 +26,7 @@ const Store = (() => {
     recurring: [],     // {id, tipo:'gasto', domain, categoria, nombre, monto, bank_id, dia, active, paid:{'YYYY-MM':expenseId}}
     loans: [],         // {id, prestamista, monto, fecha, vencimiento, interes_pct, notas, bank_id, pagos:[{id,monto,fecha,bank_id}]}
     deaths: [],        // {id, cantidad, motivo, categoria, fecha} — muertes del hato (nacidas o compradas)
+    tasks: [],         // {id, texto, fecha, done, created_at} — lista de pendientes
     settings: { theme: 'glass', currency: 'Bs', onboarded: false, user: null },
   });
 
@@ -180,6 +181,16 @@ const Store = (() => {
     loanPaid: (l) => sum(l.pagos || [], p => +p.monto || 0),
     loanBalance(l) { return Math.max(0, (+l.monto || 0) - this.loanPaid(l)); },
     loansPendingTotal() { return db.loans.reduce((s, l) => s + this.loanBalance(l), 0); },
+
+    // ---------- Tareas / pendientes ----------
+    tasks: () => db.tasks,
+    addTask(t) { const row = { id: uid(), texto: (t.texto || '').trim(), fecha: t.fecha || '', done: false, created_at: now() };
+      db.tasks.push(row); commit('insert', 'tasks', row); return row; },
+    toggleTask(id) { const t = db.tasks.find(x => x.id === id); if (t) { t.done = !t.done; commit('update', 'tasks', t); } },
+    updateTask(id, patch) { const t = db.tasks.find(x => x.id === id); if (t) { Object.assign(t, patch); commit('update', 'tasks', t); } },
+    removeTask(id) { db.tasks = db.tasks.filter(x => x.id !== id); commit('delete', 'tasks', { id }); },
+    clearDoneTasks() { db.tasks = db.tasks.filter(t => !t.done); commit('delete', 'tasks', { done: true }); },
+    pendingTasks() { return db.tasks.filter(t => !t.done).length; },
 
     // ---------- Animales (nacimientos por cantidad) ----------
     animals: () => db.animals,
