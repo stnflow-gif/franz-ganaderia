@@ -83,7 +83,8 @@ const App = {
       if (r && r.error) note(/not enabled|Unsupported/i.test(r.error.message) ? 'Google todavía no está activado en el servidor. Usá tu email por ahora.' : r.error.message);
     };
 
-    $('#btnLogin').onclick = async () => {
+    const doLogin = async (e) => {
+      if (e) e.preventDefault();
       const email = $('#logEmail').value.trim(), pass = $('#logPass').value;
       if (!supaConfigured()) return this.login('Franz Dyck', email || 'franz@dyckmanantial.com', 'email'); // modo local
       if (!window.Sync) return toast('Conectando con el servidor, probá en un segundo…');
@@ -94,15 +95,19 @@ const App = {
         note('Creando cuenta…');
         const r = await window.Sync.signUp(email, pass);
         if (r.error) return note(this.authError(r.error.message));
+        this.saveCredential(email, pass);
         if (r.data && r.data.session) note('¡Cuenta creada! Entrando…');         // autoconfirm activado
         else note('Te enviamos un correo para confirmar la cuenta. Confirmalo y volvé a entrar.');
       } else {
         note('Entrando…');
         const r = await window.Sync.signInPassword(email, pass);
         if (r.error) return note(this.authError(r.error.message));
+        this.saveCredential(email, pass);   // ofrece guardar la contraseña en Google
         // onAuthStateChange hace enterApp()
       }
     };
+    const lf = $('#loginForm'); if (lf) lf.onsubmit = doLogin;
+    const bl = $('#btnLogin'); if (bl) bl.onclick = doLogin;
     $('#btnLogout').onclick = async () => { if (window.Sync) { try { await window.Sync.signOut(); } catch (e) {} } Store.setSetting('user', null); location.reload(); };
     $$('#nav button, #btnSettings').forEach(b => b.onclick = () => { this.go(b.dataset.go); this.closeDrawer(); });
     $('#fabQuick').onclick = () => this.quickExpense();
@@ -115,6 +120,15 @@ const App = {
   closeDrawer() { $('#sidebar').classList.remove('open'); $('#scrim').classList.remove('open'); },
 
   // ---------- Auth ----------
+  // Ofrece guardar la contraseña en el gestor de Google/Chrome (Credential Management API)
+  saveCredential(email, pass) {
+    try {
+      if (window.PasswordCredential && navigator.credentials) {
+        const cred = new window.PasswordCredential({ id: email, password: pass, name: email });
+        navigator.credentials.store(cred).catch(() => {});
+      }
+    } catch (e) {}
+  },
   login(name, email, via) {          // modo local (sin backend configurado)
     Store.setSetting('user', { name, email, via });
     this.enterApp();

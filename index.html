@@ -24,9 +24,11 @@
       <img class="logo" src="assets/img/logo.jpg" alt="Dyck Manantial">
       <h2>Dyck Manantial</h2>
       <p class="sub">Sistema de Gestión Ganadera</p>
-      <div class="field"><label>Email</label><div class="control"><input type="email" id="logEmail" placeholder="franz@correo.com" autocomplete="email"></div></div>
-      <div class="field"><label>Contraseña</label><div class="control"><input type="password" id="logPass" placeholder="••••••••" autocomplete="current-password"></div></div>
-      <button class="btn btn-primary" style="width:100%" id="btnLogin">Entrar</button>
+      <form id="loginForm" method="post" action="#" autocomplete="on">
+        <div class="field"><label>Email</label><div class="control"><input type="email" id="logEmail" name="username" placeholder="franz@correo.com" autocomplete="username" autocapitalize="none" spellcheck="false"></div></div>
+        <div class="field"><label>Contraseña</label><div class="control"><input type="password" id="logPass" name="password" placeholder="••••••••" autocomplete="current-password"></div></div>
+        <button class="btn btn-primary" style="width:100%" id="btnLogin" type="submit">Entrar</button>
+      </form>
       <p class="auth-toggle" id="authToggle">¿Primera vez? <b>Creá tu cuenta</b></p>
       <p class="note-soft" id="loginNote"></p>
       <div class="e2e"><span data-icon="lock" data-size="14"></span> Cifrado de extremo a extremo</div>
@@ -97,11 +99,11 @@
 
   <div id="toast"></div>
 
-  <script src="assets/js/config.js?v=26"></script>
-  <script src="assets/js/icons.js?v=26"></script>
-  <script src="assets/js/store.js?v=26"></script>
-  <script src="assets/js/app.js?v=26"></script>
-  <script src="assets/js/sync.js?v=26"></script>
+  <script src="assets/js/config.js?v=27"></script>
+  <script src="assets/js/icons.js?v=27"></script>
+  <script src="assets/js/store.js?v=27"></script>
+  <script src="assets/js/app.js?v=27"></script>
+  <script src="assets/js/sync.js?v=27"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
