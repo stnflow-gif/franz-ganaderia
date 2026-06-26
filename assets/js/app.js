@@ -1411,16 +1411,18 @@ const App = {
     $('#btnImport').onclick = () => $('#importFile').click();
     $('#importFile').onchange = async (ev) => {
       const f = ev.target.files[0]; if (!f) return;
-      try { const txt = await f.text(); const obj = JSON.parse(txt); Store.loadSnapshot(obj); toast('Respaldo importado'); this.go('dashboard'); }
+      try { const txt = await f.text(); const obj = JSON.parse(txt); Store.loadSnapshot(obj);
+        if (window.Sync && window.Sync.resync) window.Sync.resync();   // sube lo importado a la nube
+        toast('Respaldo importado'); this.go('dashboard'); }
       catch (e) { toast('Archivo inválido'); }
     };
     $('#btnExport').onclick = () => this.exportData();
     $('#btnTour').onclick = () => { this.go('dashboard'); setTimeout(() => this.startTour(), 300); };
-    $('#btnDemo').onclick = () => { Store.loadDemo(); toast('Datos de ejemplo cargados'); this.go('dashboard'); };
+    $('#btnDemo').onclick = () => { Store.loadDemo(); if (window.Sync && window.Sync.resync) window.Sync.resync(); toast('Datos de ejemplo cargados'); this.go('dashboard'); };
     $('#btnReset').onclick = () => this.openModal('¿Borrar todos los datos?',
       `<p style="color:var(--c-text-2)">Se eliminan compras, ventas, gastos, ingresos, salidas y empleados. No se puede deshacer.</p>`, [
         { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
-        { label: 'Borrar todo', cls: 'btn-danger', icon: 'trash', fn: () => { Store.reset(); this.closeModal(); toast('Datos borrados'); this.go('dashboard'); } },
+        { label: 'Borrar todo', cls: 'btn-danger', icon: 'trash', fn: async () => { if (window.Sync && window.Sync.wipeCloud) await window.Sync.wipeCloud(); Store.reset(); this.closeModal(); toast('Datos borrados'); this.go('dashboard'); } },
       ]);
   },
 

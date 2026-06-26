@@ -48,13 +48,26 @@ const Store = (() => {
   }
   function migrate(d) { const base = seed(); return Object.assign(base, d, { settings: Object.assign(base.settings, d.settings || {}) }); }
   function save(x) { localStorage.setItem(KEY, JSON.stringify(x || db)); }
+  const USER_COLLS = ['employees', 'animals', 'purchases', 'sales', 'expenses', 'incomes', 'payables', 'recurring', 'loans', 'deaths', 'tasks'];
+  const SYNC_COLLS = ['banks'].concat(USER_COLLS);   // colecciones que se sincronizan registro por registro
+
+  // Encola una operación en el "outbox" para que sync.js la suba por registro
+  function enqueue(op, coll, row) {
+    try {
+      const q = JSON.parse(localStorage.getItem(SYNC) || '[]');
+      const id = coll === 'settings' ? 'main' : (row && row.id);
+      if (id == null) return;
+      q.push({ op, coll, id, ts: Date.now() });
+      localStorage.setItem(SYNC, JSON.stringify(q));
+    } catch (e) {}
+    window.dispatchEvent(new CustomEvent('store:op'));
+  }
   function commit(op, coll, row) {
-    db.settings.updatedAt = now();   // marca de "última modificación local" (para sync gana-el-más-nuevo)
+    db.settings.updatedAt = now();
     save();
-    try { const q = JSON.parse(localStorage.getItem(SYNC) || '[]'); q.push({ op, coll, row, ts: Date.now() }); localStorage.setItem(SYNC, JSON.stringify(q)); } catch (e) {}
+    enqueue(op, coll, row);
     window.dispatchEvent(new CustomEvent('store:changed'));
   }
-  const USER_COLLS = ['employees', 'animals', 'purchases', 'sales', 'expenses', 'incomes', 'payables', 'recurring', 'loans', 'deaths', 'tasks'];
 
   const sum = (arr, f) => arr.reduce((s, x) => s + (+f(x) || 0), 0);
   const inMonth = (d, m) => !m || (d || '').slice(0, 7) === m;
@@ -297,12 +310,33 @@ const Store = (() => {
     // Snapshot completo para sincronizar con el servidor
     snapshot: () => db,
     loadSnapshot(obj) { if (obj && typeof obj === 'object') { db = migrate(obj); save(); window.dispatchEvent(new CustomEvent('store:changed')); } },
-    // Marca de última modificación local (ms) y conteo de registros del usuario (para sync seguro)
-    lastChangeMs: () => Date.parse(db.settings.updatedAt || 0) || 0,
-    hasUserData: () => USER_COLLS.some(c => Array.isArray(db[c]) && db[c].length > 0),
-    userDataCount: () => USER_COLLS.reduce((s, c) => s + (Array.isArray(db[c]) ? db[c].length : 0), 0),
-    countUserData: (obj) => USER_COLLS.reduce((s, c) => s + (obj && Array.isArray(obj[c]) ? obj[c].length : 0), 0),
     backupLocal() { try { localStorage.setItem(KEY + '.backup', JSON.stringify(db)); } catch (e) {} },
+
+    // ---------- Sincronización por registro (Realtime) ----------
+    hasUserData: () => USER_COLLS.some(c => Array.isArray(db[c]) && db[c].length > 0),
+    syncColls: () => SYNC_COLLS,
+    // Outbox de operaciones pendientes de subir
+    pendingOps() { try { return JSON.parse(localStorage.getItem(SYNC) || '[]'); } catch (e) { return []; } },
+    clearOps() { try { localStorage.setItem(SYNC, '[]'); } catch (e) {} },
+    // Datos actuales de un registro (para subir el estado más reciente). null si ya no existe.
+    recordData(coll, id) {
+      if (coll === 'settings') return db.settings;
+      const arr = db[coll]; if (!Array.isArray(arr)) return null;
+      return arr.find(x => x.id === id) || null;
+    },
+    // Encolar TODO lo local (para sembrar la nube la primera vez / re-sincronizar tras importar)
+    enqueueAll() {
+      SYNC_COLLS.forEach(c => (db[c] || []).forEach(r => enqueue('update', c, r)));
+      enqueue('update', 'settings', { id: 'main' });
+    },
+    // Aplicar un cambio que llegó por Realtime (NO re-encola: evita loops)
+    applyRemote(op, coll, id, data) {
+      if (coll === 'settings') { if (data) { db.settings = Object.assign(seed().settings, data); save(); window.dispatchEvent(new CustomEvent('store:changed')); } return; }
+      if (!Array.isArray(db[coll])) return;
+      if (op === 'delete') { db[coll] = db[coll].filter(x => x.id !== id); }
+      else { const i = db[coll].findIndex(x => x.id === id); if (i >= 0) db[coll][i] = data; else db[coll].push(data); }
+      save(); window.dispatchEvent(new CustomEvent('store:changed'));
+    },
 
     // Reiniciar todo (deja sólo bancos/ajustes por defecto, conserva tema y usuario)
     reset() {
