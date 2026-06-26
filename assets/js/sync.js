@@ -49,12 +49,27 @@
   async function pull() {
     pulling = true;
     try {
-      const { data, error } = await sb.from('user_data').select('data').eq('user_id', uid).maybeSingle();
+      const { data, error } = await sb.from('user_data').select('data, updated_at').eq('user_id', uid).maybeSingle();
       if (error) throw error;
-      if (data && data.data && Object.keys(data.data).length) {
-        Store.loadSnapshot(data.data);           // el servidor manda
-      } else {
-        await push(true);                         // primera vez: subo lo local
+      const cloud = data && data.data;
+      const cloudCount = Store.countUserData(cloud);
+      const localCount = Store.userDataCount();
+      const cloudTime = cloud && cloud.settings && cloud.settings.updatedAt
+        ? Date.parse(cloud.settings.updatedAt) : (data ? Date.parse(data.updated_at || 0) : 0);
+      const localTime = Store.lastChangeMs();
+
+      // Regla anti-pérdida: gana el que tiene MÁS datos; empate -> el más nuevo.
+      // Nunca un equipo vacío/menos pisa al que tiene más.
+      if (localCount === 0 && cloudCount === 0) {
+        if (cloud && Object.keys(cloud).length) Store.loadSnapshot(cloud);  // solo bancos/ajustes
+      } else if (localCount > cloudCount) {
+        await push(true);                          // este equipo tiene más -> lo subo (recupera/protege)
+      } else if (cloudCount > localCount) {
+        if (localCount > 0) Store.backupLocal();   // respaldo por las dudas antes de reemplazar
+        Store.loadSnapshot(cloud);                 // la nube tiene más -> bajo
+      } else {                                     // misma cantidad -> gana el más nuevo
+        if (localTime > cloudTime) await push(true);
+        else { if (localCount > 0) Store.backupLocal(); Store.loadSnapshot(cloud); }
       }
     } catch (e) { console.warn('[sync] pull', e.message || e); }
     pulling = false;

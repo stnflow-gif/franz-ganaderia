@@ -49,10 +49,12 @@ const Store = (() => {
   function migrate(d) { const base = seed(); return Object.assign(base, d, { settings: Object.assign(base.settings, d.settings || {}) }); }
   function save(x) { localStorage.setItem(KEY, JSON.stringify(x || db)); }
   function commit(op, coll, row) {
+    db.settings.updatedAt = now();   // marca de "última modificación local" (para sync gana-el-más-nuevo)
     save();
     try { const q = JSON.parse(localStorage.getItem(SYNC) || '[]'); q.push({ op, coll, row, ts: Date.now() }); localStorage.setItem(SYNC, JSON.stringify(q)); } catch (e) {}
     window.dispatchEvent(new CustomEvent('store:changed'));
   }
+  const USER_COLLS = ['employees', 'animals', 'purchases', 'sales', 'expenses', 'incomes', 'payables', 'recurring', 'loans', 'deaths', 'tasks'];
 
   const sum = (arr, f) => arr.reduce((s, x) => s + (+f(x) || 0), 0);
   const inMonth = (d, m) => !m || (d || '').slice(0, 7) === m;
@@ -295,6 +297,12 @@ const Store = (() => {
     // Snapshot completo para sincronizar con el servidor
     snapshot: () => db,
     loadSnapshot(obj) { if (obj && typeof obj === 'object') { db = migrate(obj); save(); window.dispatchEvent(new CustomEvent('store:changed')); } },
+    // Marca de última modificación local (ms) y conteo de registros del usuario (para sync seguro)
+    lastChangeMs: () => Date.parse(db.settings.updatedAt || 0) || 0,
+    hasUserData: () => USER_COLLS.some(c => Array.isArray(db[c]) && db[c].length > 0),
+    userDataCount: () => USER_COLLS.reduce((s, c) => s + (Array.isArray(db[c]) ? db[c].length : 0), 0),
+    countUserData: (obj) => USER_COLLS.reduce((s, c) => s + (obj && Array.isArray(obj[c]) ? obj[c].length : 0), 0),
+    backupLocal() { try { localStorage.setItem(KEY + '.backup', JSON.stringify(db)); } catch (e) {} },
 
     // Reiniciar todo (deja sólo bancos/ajustes por defecto, conserva tema y usuario)
     reset() {
