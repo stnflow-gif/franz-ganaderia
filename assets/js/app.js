@@ -200,7 +200,7 @@ const App = {
   addTableSearch(el) {
     $$('.table-wrap', el).forEach(w => {
       const tb = $('table', w); if (!tb) return;
-      const rows = $$('tbody tr', tb); if (rows.length < 3) return;
+      const rows = $$('tbody tr', tb); if (rows.length < 1) return;
       const box = document.createElement('div'); box.className = 'tbl-search';
       box.innerHTML = `<span data-icon="search" data-size="16"></span><input type="text" placeholder="Buscar..." aria-label="Buscar en la tabla">`;
       w.parentNode.insertBefore(box, w);
