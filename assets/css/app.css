@@ -213,12 +213,22 @@ a{color:inherit;text-decoration:none}
 .table td{padding:14px 22px;border-top:1px solid var(--c-border)}
 .table tr:hover td{background:var(--c-surface-2)}
 .table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+/* Lupa de búsqueda sobre tablas */
+.tbl-search{display:flex;align-items:center;gap:8px;background:var(--c-surface-2);border:1px solid var(--c-border-2);
+  border-radius:10px;padding:8px 12px;margin-bottom:10px;max-width:340px;color:var(--c-muted);transition:.15s}
+.tbl-search:focus-within{border-color:var(--c-primary)}
+.tbl-search input{background:none;border:none;outline:none;color:var(--c-text);font:inherit;width:100%}
+.tbl-search svg{width:16px;height:16px;flex:none}
+.tbl-noresult{padding:18px;text-align:center;color:var(--c-muted);font-size:14px}
+[data-theme="glass"] .tbl-search{background:rgba(255,255,255,.06)}
 .table .actions{display:flex;gap:6px;justify-content:flex-end}
 .iconbtn{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--c-surface-2);
   border:1px solid var(--c-border);color:var(--c-text-2);transition:.15s}
 .iconbtn:hover{color:var(--c-text);border-color:var(--c-border-2)}
-.iconbtn.danger:hover{color:var(--c-expense);border-color:var(--c-expense)}
-.iconbtn.ok:hover{color:var(--c-income);border-color:var(--c-income)}
+.iconbtn.danger{color:var(--c-expense);border-color:color-mix(in srgb,var(--c-expense) 35%,transparent)}
+.iconbtn.danger:hover{color:#fff;background:var(--c-expense);border-color:var(--c-expense)}
+.iconbtn.ok{color:var(--c-income);border-color:color-mix(in srgb,var(--c-income) 35%,transparent)}
+.iconbtn.ok:hover{color:#fff;background:var(--c-income);border-color:var(--c-income)}
 .iconbtn svg{width:17px;height:17px}
 
 .badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:20px;font-size:12px;font-weight:700}
@@ -276,6 +286,7 @@ a{color:inherit;text-decoration:none}
 .control:focus-within{border-color:var(--c-primary)}
 .control .prefix{color:var(--c-muted);font-weight:700;font-size:13px}
 select.control{appearance:none;cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,var(--c-muted) 50%),linear-gradient(135deg,var(--c-muted) 50%,transparent 50%);background-position:calc(100% - 18px) 18px,calc(100% - 13px) 18px;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+select.control option,select.control optgroup{background:#211d16;color:#fff}
 textarea.control{resize:vertical;min-height:62px}
 .amount-big{font-size:26px;font-weight:800}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -283,6 +294,17 @@ textarea.control{resize:vertical;min-height:62px}
   border:1px solid var(--c-border-2);font-weight:600;font-size:13.5px;transition:.15s}
 .chip svg{width:17px;height:17px}
 .chip.on{background:var(--c-primary);color:var(--c-primary-ink);border-color:transparent}
+/* Selector de área resaltado en verde (combina con el oro glass) */
+.chips.area-sel .chip.on{background:linear-gradient(135deg,#2f9d5e,#46c282);color:#06140c;border-color:transparent;
+  box-shadow:0 6px 18px -6px rgba(60,190,122,.6), inset 0 1px 0 rgba(255,255,255,.25)}
+.chips.area-sel .chip{font-weight:700}
+
+/* Ficha de empleado */
+.ficha-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 22px}
+.ficha-row{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ficha-row .k{font-size:11px;font-weight:700;color:var(--c-muted);text-transform:uppercase;letter-spacing:.02em}
+.ficha-row .v{font-size:14px;color:var(--c-text);word-break:break-word}
+@media(max-width:560px){.ficha-grid{grid-template-columns:1fr}}
 
 /* sub-tabla de items (animales) */
 .subtable{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}

@@ -46,16 +46,20 @@ check('Gasto personal guardado', S.expenses().some(x => x.domain === 'personal' 
 check('Ingreso guardado', S.incomes().some(x => x.monto === 3000));
 check('Comprobante por defecto null', S.expenses()[0].comprobante === null);
 
-// 3. Animales y muertes
+// 3. Animales por lotes (cantidad) y muertes
 console.log('\nAnimales y muertes:');
-const a1 = S.addAnimal({ codigo: 'A1', categoria: 'Vaca' });
-const a2 = S.addAnimal({ codigo: 'A2', categoria: 'Toro' });
-const a3 = S.addAnimal({ codigo: 'A3' });
-S.killAnimal(a3.id, { motivo: 'Enfermedad' });
-check('3 animales registrados', S.animals().length === 3);
-check('Cabezas vivas = 2', S.headCount() === 2);
-check('1 muerte registrada', S.deaths().length === 1);
-check('Muerte con motivo correcto', S.deathsByReason()[0].motivo === 'Enfermedad' && S.deathsByReason()[0].n === 1);
+const a1 = S.addAnimal({ categoria: 'Vaca', cantidad: 50 });
+const a2 = S.addAnimal({ categoria: 'Toro', cantidad: 10 });
+const a3 = S.addAnimal({ categoria: 'Vaquilla', cantidad: 20 });
+S.registrarMuerte(a3.id, { cantidad: 3, motivo: 'Enfermedad' });
+check('3 lotes registrados', S.animals().length === 3);
+check('Cabezas vivas = 77 (80 - 3 muertas)', S.headCount() === 77);
+check('Total muertes = 3 cabezas', S.totalMuertes() === 3);
+check('Muerte con motivo correcto', S.deathsByReason()[0].motivo === 'Enfermedad' && S.deathsByReason()[0].n === 3);
+S.registrarVentaLote(a1.id, { cantidad: 20 });
+check('Salida de inventario descuenta vivas (57)', S.headCount() === 57);
+check('Total vendidas/salidas = 20', S.totalVendidas() === 20);
+check('No se puede matar más de las vivas', (() => { S.registrarMuerte(a2.id, { cantidad: 999, motivo: 'Accidente' }); return S.loteVivos(S.animals().find(x => x.id === a2.id)) === 0; })());
 
 // 4. Compras / Ventas
 console.log('\nCompras / Ventas:');
@@ -63,6 +67,20 @@ S.addPurchase({ proveedor: 'X', metodo_pago: 'Crédito', items: [{ cantidad: 5, 
 check('Compra a crédito genera deuda', S.payables().some(p => p.monto_total === 5000 && p.estado === 'pendiente'));
 S.addSale({ cliente: 'Y', metodo_pago: 'Efectivo', items: [{ cantidad: 2, precio: 2000 }] });
 check('Venta total = 4000', S.sales().some(s => s.total === 4000));
+// Precio total directo (compra a precio cerrado)
+S.addPurchase({ proveedor: 'Lote100', metodo_pago: 'Efectivo', total: 250000, items: [{ cantidad: 100, precio: 0 }] });
+check('Compra usa precio total directo', S.purchases().some(p => p.proveedor === 'Lote100' && p.total === 250000));
+
+// 4b. Préstamos
+console.log('\nPréstamos:');
+const pr = S.addLoan({ prestamista: 'Banco X', monto: 100000 });
+check('Préstamo registrado', S.loans().length === 1 && S.loanBalance(pr) === 100000);
+S.payLoan(pr.id, { monto: 30000 });
+check('Pago de préstamo baja saldo a 70000', S.loanBalance(S.loans()[0]) === 70000);
+check('Saldo pendiente total = 70000', S.loansPendingTotal() === 70000);
+const deudasAntes = S.payables().length;
+S.addPurchase({ proveedor: 'Z', metodo_pago: 'Préstamo', loan_id: pr.id, items: [{ cantidad: 50, precio: 1000 }] });
+check('Compra con préstamo NO genera deuda nueva', S.payables().length === deudasAntes);
 
 // 5. Empleados y sueldos
 console.log('\nEmpleados y sueldos:');

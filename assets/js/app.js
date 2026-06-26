@@ -138,6 +138,15 @@ const App = {
     $('#userAv').textContent = (u.name || 'F').charAt(0).toUpperCase();
     this.go('dashboard');
     if (!Store.settings().onboarded) setTimeout(() => this.startTour(), 500);
+    this.handleLaunchParams();
+  },
+  // Atajos del APK / accesos directos (?go=ganaderia | ?quick=1)
+  handleLaunchParams() {
+    let p; try { p = new URLSearchParams(location.search); } catch (e) { return; }
+    const go = p.get('go'); const quick = p.get('quick');
+    const valid = ['dashboard', 'ganaderia', 'personales', 'ingresos', 'ajustes'];
+    if (go && valid.includes(go)) this.go(go);
+    if (quick) setTimeout(() => this.quickExpense(), 350);
   },
 
   // ---------- Router ----------
@@ -167,6 +176,26 @@ const App = {
     const ha = $('[data-headaction]', el);
     if (ha && this._pendingHeadFn) { const fn = this._pendingHeadFn; ha.onclick = fn; }
     this._pendingHeadFn = null;
+    this.addTableSearch(el);
+  },
+  // Lupa de búsqueda automática sobre cada tabla con varias filas
+  addTableSearch(el) {
+    $$('.table-wrap', el).forEach(w => {
+      const tb = $('table', w); if (!tb) return;
+      const rows = $$('tbody tr', tb); if (rows.length < 3) return;
+      const box = document.createElement('div'); box.className = 'tbl-search';
+      box.innerHTML = `<span data-icon="search" data-size="16"></span><input type="text" placeholder="Buscar..." aria-label="Buscar en la tabla">`;
+      w.parentNode.insertBefore(box, w);
+      const inp = $('input', box);
+      inp.oninput = () => { const q = inp.value.toLowerCase().trim();
+        let visibles = 0;
+        $$('tbody tr', tb).forEach(tr => { const ok = !q || tr.textContent.toLowerCase().includes(q); tr.style.display = ok ? '' : 'none'; if (ok) visibles++; });
+        let empty = $('.tbl-noresult', w);
+        if (!visibles) { if (!empty) { empty = document.createElement('div'); empty.className = 'tbl-noresult'; empty.textContent = 'Sin resultados para "' + inp.value + '"'; w.appendChild(empty); } }
+        else if (empty) empty.remove();
+      };
+      this.injectIcons(box);
+    });
   },
 
   // ============================================================
@@ -273,7 +302,8 @@ const App = {
     if (!this.ganTab) this.ganTab = 'resumen';
     const t = this.ganTab;
     const tabs = [['resumen','Resumen','chart'],['animales','Animales','cow'],['compras','Compras','cart'],
-      ['ventas','Ventas','trending'],['gastos','Gastos','arrowDown'],['fijos','Fijos','clock'],['empleados','Empleados','workers'],['deudas','Deudas','receipt']];
+      ['ventas','Ventas','trending'],['gastos','Gastos','arrowDown'],['fijos','Fijos','clock'],['empleados','Empleados','workers'],
+      ['prestamos','Préstamos','coins'],['deudas','Deudas','receipt']];
     let h = this.head('Ganadería', 'Operación del campo');
     h += `<div class="subtabs">${tabs.map(([k, l, ic]) =>
       `<button class="subtab ${k === t ? 'on' : ''}" data-sub="${k}"><span data-icon="${ic}" data-size="17"></span> ${l}</button>`).join('')}</div>`;
@@ -282,7 +312,7 @@ const App = {
     const root = $('#screen-ganaderia');
     $$('.subtab', root).forEach(b => b.onclick = () => { this.ganTab = b.dataset.sub; this.renderGanaderia(); });
     const addMap = { animales:() => this.formAnimal(), compras:() => this.formCompra(), ventas:() => this.formVenta(),
-      gastos:() => this.formExpense('ganaderia'), empleados:() => this.formEmpleado(), deudas:() => this.formSalida() };
+      gastos:() => this.formExpense('ganaderia'), empleados:() => this.formEmpleado(), prestamos:() => this.formLoan(), deudas:() => this.formSalida('ganaderia') };
     const add = $('#subAdd', root); if (add && addMap[t]) add.onclick = addMap[t];
     this.bindGan(root, t);
   },
@@ -305,7 +335,7 @@ const App = {
     const maxR = Math.max(1, ...reasons.map(r => r.n));
     let h = this.miniStats([
       ['Cabezas vivas', Store.headCount(), 'cow', '', 'Animales activos'],
-      ['Muertes', Store.deaths().length, 'skull', 'expense', 'Total registradas'],
+      ['Muertes', Store.totalMuertes(), 'skull', 'expense', 'Cabezas registradas'],
       ['Ingresos ganadería', money(f.ingreso), 'coins', 'income', 'Ventas + otros'],
       ['Salidas ganadería', money(f.salida), 'arrowDown', 'expense', 'Compras, gastos, salarios'],
     ]);
@@ -316,28 +346,29 @@ const App = {
     return h;
   },
 
-  // ----- Animales (registro individual) -----
+  // ----- Animales (registro por lotes / cantidad) -----
   gan_animales() {
     const all = Store.animals();
-    const vivos = all.filter(a => a.estado === 'vivo').length;
-    const muertos = all.filter(a => a.estado === 'muerto').length;
-    const vendidos = all.filter(a => a.estado === 'vendido').length;
-    const badge = e => e === 'muerto' ? '<span class="badge pend">Muerto</span>'
-      : e === 'vendido' ? '<span class="badge off">Vendido</span>' : '<span class="badge ok">Vivo</span>';
+    const baja = a => { const m = Store.loteMuertos(a), v = Store.loteVendidos(a); const parts = [];
+      if (m) parts.push(`<span class="badge pend">${m} muerta${m > 1 ? 's' : ''}</span>`);
+      if (v) parts.push(`<span class="badge off">${v} vendida${v > 1 ? 's' : ''}</span>`);
+      return parts.join(' ') || '—'; };
     const table = all.length ? `<div class="table-wrap"><table class="table">
-      <thead><tr><th>Código</th><th>Categoría</th><th>Raza</th><th>Sexo</th><th>Edad</th><th>Estado</th><th>Motivo / baja</th><th>Acciones</th></tr></thead>
-      <tbody>${all.slice().reverse().map(a => `<tr>
-        <td><b>${esc(a.codigo || '—')}</b></td><td>${esc(a.categoria)}</td><td>${esc(a.raza || '—')}</td><td>${esc(a.sexo)}</td>
-        <td>${a.edad_meses || 0} m</td><td>${badge(a.estado)}</td>
-        <td>${a.estado === 'muerto' ? esc(a.motivo) + ' · ' + fdate(a.fecha_baja) : a.estado === 'vendido' ? 'Vendido ' + fdate(a.fecha_baja) : '—'}</td>
+      <thead><tr><th>#</th><th>Categoría</th><th>Raza</th><th class="num">Vivas</th><th class="num">Nacidas</th><th>Edad</th><th>Muertas</th><th>Acciones</th></tr></thead>
+      <tbody>${all.slice().reverse().map((a, i) => `<tr>
+        <td><b>#${all.length - i}</b></td><td>${esc(a.categoria)}</td><td>${esc(a.raza || '—')}</td>
+        <td class="num"><b>${Store.loteVivos(a)}</b></td><td class="num">${Store.loteTotal(a)}</td>
+        <td>${a.edad_meses || 0} m</td><td>${baja(a)}</td>
         <td class="actions">
-          ${a.estado === 'vivo' ? `<button class="iconbtn danger" data-kill="${a.id}" title="Registrar muerte"><span data-icon="skull" data-size="16"></span></button>` : `<button class="iconbtn ok" data-revive="${a.id}" title="Marcar vivo"><span data-icon="check" data-size="16"></span></button>`}
+          ${Store.loteVivos(a) > 0 ? `<button class="iconbtn danger" data-kill="${a.id}" title="Registrar muerte"><span data-icon="skull" data-size="16"></span></button>` : ''}
           <button class="iconbtn" data-edit="${a.id}" title="Editar"><span data-icon="edit" data-size="16"></span></button>
           <button class="iconbtn danger" data-del="${a.id}" title="Eliminar"><span data-icon="trash" data-size="16"></span></button>
-        </td></tr>`).join('')}</tbody></table></div>` : this.emptyState('cow', 'Sin animales. Registrá tu primera cabeza con el botón de arriba.');
-    return this.miniStats([
-      ['Vivos', vivos, 'cow', 'income'], ['Muertos', muertos, 'skull', 'expense'], ['Vendidos', vendidos, 'cash', ''],
-    ]) + this.panelAdd('Registro de animales', 'Registrar animal', 'plus', table);
+        </td></tr>`).join('')}</tbody></table></div>` : this.emptyState('cow', 'Sin nacimientos registrados. Las crías nacidas en el campo se registran acá; los comprados van en Compras.');
+    return `<p class="muted" style="font-size:13px;margin-bottom:14px">Cabezas vivas totales = <b>nacimientos vivos + comprados − vendidos</b>. Acá registrás los <b>nacimientos</b>; los comprados están en <b>Compras</b>.</p>`
+      + this.miniStats([
+      ['Cabezas vivas (total)', Store.headCount(), 'cow', 'income'], ['Nacimientos vivos', Store.bornAlive(), 'sparkles', ''],
+      ['Comprados', Store.boughtHeads(), 'cart', ''], ['Muertas', Store.totalMuertes(), 'skull', 'expense'],
+    ]) + this.panelAdd('Nacimientos registrados', 'Registrar nacimiento', 'plus', table);
   },
 
   // ----- Compras -----
@@ -411,12 +442,11 @@ const App = {
 
   // ----- Deudas (cuentas por pagar) -----
   gan_deudas() {
-    const rows = Store.payables();
+    const rows = Store.payables().filter(p => p.domain !== 'personal');
     const totalPagar = rows.filter(p => p.estado !== 'pagado').reduce((s, p) => s + (p.monto_total - p.pagado), 0);
     const table = rows.length ? `<div class="table-wrap"><table class="table">
-      <thead><tr><th>Proveedor</th><th>Descripción</th><th>Área</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Pendiente</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
+      <thead><tr><th>Proveedor</th><th>Descripción</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Pendiente</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
       <tbody>${rows.slice().reverse().map(p => `<tr><td>${esc(p.proveedor || '—')}</td><td>${esc(p.descripcion || '—')}</td>
-        <td><span class="badge ${p.domain === 'personal' ? 'per' : 'gan'}">${p.domain === 'personal' ? 'Personal' : 'Ganadería'}</span></td>
         <td class="num">${money(p.monto_total)}</td><td class="num">${money(p.pagado)}</td><td class="num">${money(p.monto_total - p.pagado)}</td>
         <td>${fdate(p.vencimiento)}</td><td><span class="badge ${p.estado === 'pagado' ? 'ok' : 'pend'}">${p.estado === 'pagado' ? 'Pagado' : 'Pendiente'}</span></td>
         <td class="actions">${p.estado !== 'pagado' ? `<button class="iconbtn ok" data-pay="${p.id}" title="Marcar pagado"><span data-icon="check" data-size="17"></span></button>` : ''}
@@ -425,6 +455,71 @@ const App = {
     return this.miniStats([['Total por pagar', money(totalPagar), 'arrowDown', 'expense'],
       ['Cuentas', rows.length, 'receipt'], ['Pendientes', rows.filter(p => p.estado !== 'pagado').length, 'clock', 'warn']])
       + this.panelAdd('Cuentas por pagar', 'Nueva cuenta', 'receipt', table);
+  },
+
+  // ----- Préstamos -----
+  gan_prestamos() {
+    const loans = Store.loans();
+    const totalPrestado = loans.reduce((s, l) => s + (+l.monto || 0), 0);
+    const totalPend = Store.loansPendingTotal();
+    const table = loans.length ? `<div class="table-wrap"><table class="table">
+      <thead><tr><th>Prestamista</th><th>Fecha</th><th class="num">Monto</th><th class="num">Pagado</th><th class="num">Saldo</th><th>Vence</th><th>Estado</th><th>Acciones</th></tr></thead>
+      <tbody>${loans.slice().reverse().map(l => { const pagado = Store.loanPaid(l), saldo = Store.loanBalance(l); const pagado_full = saldo <= 0;
+        return `<tr><td><b>${esc(l.prestamista || '—')}</b>${l.interes_pct ? ` <span class="muted" style="font-size:11px">${l.interes_pct}%</span>` : ''}</td>
+        <td>${fdate(l.fecha)}</td><td class="num">${money(l.monto)}</td><td class="num">${money(pagado)}</td>
+        <td class="num"><b>${money(saldo)}</b></td><td>${fdate(l.vencimiento)}</td>
+        <td><span class="badge ${pagado_full ? 'ok' : 'pend'}">${pagado_full ? 'Pagado' : 'Pendiente'}</span></td>
+        <td class="actions">
+          ${!pagado_full ? `<button class="iconbtn ok" data-payloan="${l.id}" title="Registrar pago"><span data-icon="cash" data-size="16"></span></button>` : ''}
+          <button class="iconbtn" data-editloan="${l.id}" title="Editar"><span data-icon="edit" data-size="16"></span></button>
+          <button class="iconbtn danger" data-delloan="${l.id}" title="Eliminar"><span data-icon="trash" data-size="16"></span></button>
+        </td></tr>`; }).join('')}</tbody></table></div>` : this.emptyState('coins', 'Sin préstamos registrados. Acá cargás los créditos que pediste; después podés pagar compras "con el préstamo".');
+    return this.miniStats([
+      ['Total prestado', money(totalPrestado), 'coins', ''], ['Saldo por pagar', money(totalPend), 'arrowDown', 'expense'],
+      ['Préstamos', loans.length, 'receipt'],
+    ]) + this.panelAdd('Préstamos', 'Nuevo préstamo', 'coins', table);
+  },
+  formLoan(id) {
+    const l = id ? Store.loans().find(x => x.id === id) : {};
+    const banks = Store.banks();
+    const body = `<div class="form-grid">
+      <div class="field"><label>Prestamista <span class="req">*</span></label><div class="control"><input id="lProv" list="dl-prestamistas" value="${esc(l.prestamista || '')}" placeholder="Banco / persona que prestó"></div></div>
+      <div class="field"><label>Monto <span class="req">*</span></label><div class="control"><span class="prefix">Bs</span><input type="number" id="lMonto" value="${l.monto || 0}"></div></div>
+      <div class="field"><label>Fecha</label><div class="control"><input type="date" id="lFecha" value="${l.fecha || Store.today()}"></div></div>
+      <div class="field"><label>Vencimiento</label><div class="control"><input type="date" id="lVence" value="${l.vencimiento || ''}"></div></div>
+      <div class="field"><label>Interés (%)</label><div class="control"><input type="number" id="lInt" value="${l.interes_pct || 0}"></div></div>
+      <div class="field"><label>Banco donde entró</label><select class="control" id="lBank"><option value="">Ninguno</option>${banks.map(b => `<option value="${b.id}" ${l.bank_id === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></div>
+      <div class="field col-2"><label>Notas</label><div class="control"><input id="lNotas" value="${esc(l.notas || '')}" placeholder="Para qué fue, condiciones, etc."></div></div>
+    </div>`;
+    this.openModal(id ? 'Editar préstamo' : 'Nuevo préstamo', body, [
+      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
+      { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: () => {
+        const prov = $('#lProv').value.trim(); const monto = +$('#lMonto').value;
+        if (!prov) return toast('Falta el prestamista'); if (!monto || monto <= 0) return toast('Ingresá el monto');
+        const data = { prestamista: prov, monto, fecha: $('#lFecha').value, vencimiento: $('#lVence').value,
+          interes_pct: +$('#lInt').value || 0, bank_id: $('#lBank').value || null, notas: $('#lNotas').value.trim() };
+        id ? Store.updateLoan(id, data) : Store.addLoan(data);
+        this.closeModal(); toast('Préstamo guardado'); this.refresh();
+      } },
+    ]);
+  },
+  payLoanModal(id) {
+    const l = Store.loans().find(x => x.id === id); if (!l) return;
+    const saldo = Store.loanBalance(l); const banks = Store.banks();
+    const body = `<p class="sub" style="margin-bottom:16px;color:var(--c-muted)">Pago a <b>${esc(l.prestamista)}</b> — saldo: <b>${money(saldo)}</b></p>
+      <div class="form-grid">
+        <div class="field"><label>Monto a pagar <span class="req">*</span></label><div class="control"><span class="prefix">Bs</span><input type="number" id="plMonto" value="${saldo}"></div></div>
+        <div class="field"><label>Fecha</label><div class="control"><input type="date" id="plFecha" value="${Store.today()}"></div></div>
+        <div class="field col-2"><label>Banco</label><select class="control" id="plBank"><option value="">Efectivo</option>${banks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
+      </div>`;
+    this.openModal('Registrar pago de préstamo', body, [
+      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
+      { label: 'Registrar pago', cls: 'btn-primary', icon: 'check', fn: () => {
+        const monto = +$('#plMonto').value; if (!monto || monto <= 0) return toast('Ingresá el monto');
+        Store.payLoan(id, { monto, fecha: $('#plFecha').value, bank_id: $('#plBank').value || null });
+        this.closeModal(); toast('Pago registrado'); this.refresh();
+      } },
+    ]);
   },
 
   // ----- Binding de filas según sub-tab -----
@@ -447,9 +542,13 @@ const App = {
     }
     if (t === 'animales') {
       $$('[data-kill]', root).forEach(b => b.onclick = () => this.killAnimalModal(b.dataset.kill));
-      $$('[data-revive]', root).forEach(b => b.onclick = () => { Store.reviveAnimal(b.dataset.revive); toast('Marcado vivo'); this.refresh(); });
       $$('[data-edit]', root).forEach(b => b.onclick = () => this.formAnimal(b.dataset.edit));
       $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeAnimal(b.dataset.del)));
+    }
+    if (t === 'prestamos') {
+      $$('[data-payloan]', root).forEach(b => b.onclick = () => this.payLoanModal(b.dataset.payloan));
+      $$('[data-editloan]', root).forEach(b => b.onclick = () => this.formLoan(b.dataset.editloan));
+      $$('[data-delloan]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeLoan(b.dataset.delloan)));
     }
     if (t === 'fijos') this.bindFijos(root, 'ganaderia');
   },
@@ -606,39 +705,59 @@ const App = {
   // ----- Form animal -----
   formAnimal(id) {
     const a = id ? Store.animals().find(x => x.id === id) : {};
-    const body = `<div class="form-grid">
-      <div class="field"><label>Código / Arete</label><div class="control"><input id="anCod" value="${esc(a.codigo || '')}" placeholder="Ej: VAC-001"></div></div>
-      <div class="field"><label>Categoría</label><select class="control" id="anCat">${opt(ANIMAL_CATS, a.categoria || 'Vaca')}</select></div>
+    const body = `<p class="sub" style="margin-bottom:14px;color:var(--c-muted)">Para crías nacidas en el campo. Los animales <b>comprados</b> se registran en la pestaña <b>Compras</b> (con precio).</p>
+    <div class="form-grid">
+      <div class="field"><label>Cantidad de crías <span class="req">*</span></label><div class="control"><input type="number" id="anCant" min="1" value="${id ? Store.loteTotal(a) : 1}" placeholder="Ej: 12"></div></div>
+      <div class="field"><label>Categoría</label><select class="control" id="anCat">${opt(ANIMAL_CATS, a.categoria || 'Ternero')}</select></div>
       <div class="field"><label>Raza</label><div class="control"><input id="anRaza" value="${esc(a.raza || '')}" placeholder="Ej: Nelore"></div></div>
-      <div class="field"><label>Sexo</label><select class="control" id="anSexo">${opt(['Hembra','Macho'], a.sexo || 'Hembra')}</select></div>
-      <div class="field"><label>Edad (meses)</label><div class="control"><input type="number" id="anEdad" value="${a.edad_meses || 0}"></div></div>
-      <div class="field"><label>Peso (kg)</label><div class="control"><input type="number" id="anPeso" value="${a.peso || 0}"></div></div>
-      <div class="field"><label>Origen</label><select class="control" id="anOrig">${opt(['compra','nacimiento','otro'], a.origen || 'compra')}</select></div>
-      <div class="field"><label>Fecha de ingreso</label><div class="control"><input type="date" id="anFecha" value="${a.fecha_ingreso || Store.today()}"></div></div>
-    </div>`;
-    this.openModal(id ? 'Editar animal' : 'Registrar animal', body, [
+      <div class="field"><label>Edad promedio (meses)</label><div class="control"><input type="number" id="anEdad" value="${a.edad_meses || 0}"></div></div>
+      <div class="field"><label>Peso promedio (kg)</label><div class="control"><input type="number" id="anPeso" value="${a.peso || 0}"></div></div>
+      <div class="field"><label>Fecha de nacimiento</label><div class="control"><input type="date" id="anFecha" value="${a.fecha_ingreso || Store.today()}"></div></div>
+    </div>${id ? `<p class="muted" style="font-size:12.5px;margin-top:6px">Para registrar muertes usá el botón de la fila.</p>` : ''}`;
+    this.openModal(id ? 'Editar nacimiento' : 'Registrar nacimiento', body, [
       { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
       { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: () => {
-        const data = { codigo: $('#anCod').value.trim(), categoria: $('#anCat').value, raza: $('#anRaza').value.trim(),
-          sexo: $('#anSexo').value, edad_meses: +$('#anEdad').value || 0, peso: +$('#anPeso').value || 0,
-          origen: $('#anOrig').value, fecha_ingreso: $('#anFecha').value };
+        const cant = +$('#anCant').value || 0; if (cant < 1) return toast('Ingresá la cantidad de crías');
+        const data = { cantidad: cant, categoria: $('#anCat').value, raza: $('#anRaza').value.trim(),
+          edad_meses: +$('#anEdad').value || 0, peso: +$('#anPeso').value || 0,
+          origen: 'nacimiento', fecha_ingreso: $('#anFecha').value };
         id ? Store.updateAnimal(id, data) : Store.addAnimal(data);
-        this.closeModal(); toast('Animal guardado'); this.refresh();
+        this.closeModal(); toast('Nacimiento registrado'); this.refresh();
       } },
     ]);
   },
   killAnimalModal(id) {
     const a = Store.animals().find(x => x.id === id); if (!a) return;
-    const body = `<p class="sub" style="margin-bottom:16px;color:var(--c-muted)">Registrar baja de <b>${esc(a.codigo || a.categoria)}</b></p>
+    const vivas = Store.loteVivos(a);
+    const body = `<p class="sub" style="margin-bottom:16px;color:var(--c-muted)">Registrar muerte del lote <b>${esc(a.categoria)}${a.raza ? ' · ' + esc(a.raza) : ''}</b> — disponibles: <b>${vivas}</b> cabezas</p>
       <div class="form-grid">
+        <div class="field"><label>¿Cuántas murieron? <span class="req">*</span></label><div class="control"><input type="number" id="kCant" min="1" max="${vivas}" value="1"></div></div>
         <div class="field"><label>Motivo</label><select class="control" id="kMot">${opt(DEATH_REASONS, 'Enfermedad')}</select></div>
-        <div class="field"><label>Fecha</label><div class="control"><input type="date" id="kFecha" value="${Store.today()}"></div></div>
+        <div class="field col-2"><label>Fecha</label><div class="control"><input type="date" id="kFecha" value="${Store.today()}"></div></div>
       </div>`;
     this.openModal('Registrar muerte', body, [
       { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
       { label: 'Registrar muerte', cls: 'btn-danger', icon: 'skull', fn: () => {
-        Store.killAnimal(id, { motivo: $('#kMot').value, fecha: $('#kFecha').value });
+        const c = +$('#kCant').value || 0; if (c < 1) return toast('Ingresá cuántas murieron');
+        Store.registrarMuerte(id, { cantidad: c, motivo: $('#kMot').value, fecha: $('#kFecha').value });
         this.closeModal(); toast('Muerte registrada'); this.refresh();
+      } },
+    ]);
+  },
+  ventaLoteModal(id) {
+    const a = Store.animals().find(x => x.id === id); if (!a) return;
+    const vivas = Store.loteVivos(a);
+    const body = `<p class="sub" style="margin-bottom:16px;color:var(--c-muted)">Sacar cabezas del inventario del lote <b>${esc(a.categoria)}${a.raza ? ' · ' + esc(a.raza) : ''}</b> — disponibles: <b>${vivas}</b><br><span style="font-size:12px">Esto descuenta del inventario. El dinero de la venta se registra aparte en la pestaña <b>Ventas</b>.</span></p>
+      <div class="form-grid">
+        <div class="field"><label>¿Cuántas salieron? <span class="req">*</span></label><div class="control"><input type="number" id="vlCant" min="1" max="${vivas}" value="1"></div></div>
+        <div class="field"><label>Fecha</label><div class="control"><input type="date" id="vlFecha" value="${Store.today()}"></div></div>
+      </div>`;
+    this.openModal('Salida / venta del inventario', body, [
+      { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
+      { label: 'Registrar salida', cls: 'btn-primary', icon: 'check', fn: () => {
+        const c = +$('#vlCant').value || 0; if (c < 1) return toast('Ingresá cuántas salieron');
+        Store.registrarVentaLote(id, { cantidad: c, fecha: $('#vlFecha').value });
+        this.closeModal(); toast('Salida registrada'); this.refresh();
       } },
     ]);
   },
@@ -646,18 +765,25 @@ const App = {
   formCompra() {
     this.formItems = [];
     const banks = Store.banks();
+    const loans = Store.loans().filter(l => Store.loanBalance(l) > 0 || true);
+    const metodos = [...METODOS, 'Préstamo'];
+    const loanOpts = loans.length ? loans.map(l => `<option value="${l.id}">${esc(l.prestamista)} — saldo ${money(Store.loanBalance(l))}</option>`).join('')
+      : `<option value="">(no hay préstamos registrados — cargalos en la pestaña Préstamos)</option>`;
     const body = `
       <div class="form-grid">
         <div class="field"><label>Fecha <span class="req">*</span></label><div class="control"><input type="date" id="cFecha" value="${Store.today()}"></div></div>
-        <div class="field"><label>Proveedor <span class="req">*</span></label><div class="control"><input id="cProv" placeholder="Nombre del proveedor"></div></div>
+        <div class="field"><label>Proveedor <span class="req">*</span></label><div class="control"><input id="cProv" list="dl-proveedores" placeholder="Nombre del proveedor"></div></div>
         <div class="field"><label>Cuenta Bancaria</label><select class="control" id="cBank"><option value="">Ninguna</option>${banks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
-        <div class="field"><label>Método de Pago</label><select class="control" id="cMetodo">${opt(METODOS, 'Efectivo')}</select></div>
+        <div class="field"><label>Método de Pago</label><select class="control" id="cMetodo">${opt(metodos, 'Efectivo')}</select></div>
+        <div class="field col-2" id="cLoanWrap" style="display:none"><label>¿Con qué préstamo se pagó?</label><select class="control" id="cLoan">${loanOpts}</select>
+          <p class="muted" style="font-size:12px;margin-top:5px">Pagar con préstamo NO genera deuda nueva (la deuda ya es el préstamo).</p></div>
+        <div class="field col-2"><label>Precio total de la compra (opcional)</label><div class="control"><span class="prefix">Bs</span><input type="number" id="cTotal" placeholder="Si comprás a precio cerrado, poné el total acá"></div></div>
         <div class="field col-2"><label>Observaciones</label><textarea class="control" id="cObs" placeholder="Notas adicionales"></textarea></div>
       </div>
       <div class="section-title" style="margin-top:18px"><span data-icon="cow"></span> Agregar animales</div>
       <div class="form-grid">
         <div class="field"><label>Categoría</label><select class="control" id="aCat">${opt(ANIMAL_CATS, 'Vaca')}</select></div>
-        <div class="field"><label>Raza</label><div class="control"><input id="aRaza" placeholder="Raza del animal"></div></div>
+        <div class="field"><label>Raza</label><div class="control"><input id="aRaza" list="dl-razas" placeholder="Raza del animal"></div></div>
         <div class="field"><label>Cantidad</label><div class="control"><input type="number" id="aCant" value="1" min="1"></div></div>
         <div class="field"><label>Precio Unitario</label><div class="control"><span class="prefix">Bs</span><input type="number" id="aPrecio" value="0"></div></div>
         <div class="field"><label>Edad (meses)</label><div class="control"><input type="number" id="aEdad" value="0"></div></div>
@@ -669,6 +795,7 @@ const App = {
       { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
       { label: 'Guardar Compra', cls: 'btn-primary', icon: 'check', fn: () => this.saveCompra() },
     ]);
+    $('#cMetodo').onchange = () => { $('#cLoanWrap').style.display = $('#cMetodo').value === 'Préstamo' ? '' : 'none'; };
     $('#addItem').onclick = () => {
       const it = { categoria: $('#aCat').value, raza: $('#aRaza').value, cantidad: +$('#aCant').value || 1,
         precio: +$('#aPrecio').value || 0, edad: +$('#aEdad').value || 0, sexo: $('#aSexo').value };
@@ -692,8 +819,11 @@ const App = {
     const prov = $('#cProv').value.trim();
     if (!prov) return toast('Falta el proveedor');
     if (!this.formItems.length) return toast('Agregá al menos un animal');
+    const metodo = $('#cMetodo').value;
+    const loan_id = metodo === 'Préstamo' ? ($('#cLoan').value || null) : null;
     Store.addPurchase({ fecha: $('#cFecha').value, proveedor: prov, bank_id: $('#cBank').value || null,
-      metodo_pago: $('#cMetodo').value, observaciones: $('#cObs').value, items: this.formItems });
+      metodo_pago: metodo, observaciones: $('#cObs').value, items: this.formItems,
+      total: +$('#cTotal').value || 0, loan_id });
     this.closeModal(); toast('Compra registrada'); this.refresh();
   },
 
@@ -702,7 +832,7 @@ const App = {
     const banks = Store.banks();
     const body = `<div class="form-grid">
         <div class="field"><label>Fecha <span class="req">*</span></label><div class="control"><input type="date" id="vFecha" value="${Store.today()}"></div></div>
-        <div class="field"><label>Cliente <span class="req">*</span></label><div class="control"><input id="vCli" placeholder="Nombre del cliente"></div></div>
+        <div class="field"><label>Cliente <span class="req">*</span></label><div class="control"><input id="vCli" list="dl-clientes" placeholder="Nombre del cliente"></div></div>
         <div class="field"><label>Banco que recibe</label><select class="control" id="vBank"><option value="">Ninguna</option>${banks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
         <div class="field"><label>Método de Pago</label><select class="control" id="vMetodo">${opt(METODOS, 'Efectivo')}</select></div>
         <div class="field col-2"><label>Observaciones</label><textarea class="control" id="vObs" placeholder="Notas adicionales"></textarea></div>
@@ -743,14 +873,32 @@ const App = {
   renderPersonales() {
     const rows = Store.expenses().filter(x => x.domain === 'personal').slice().reverse();
     const total = rows.reduce((s, x) => s + x.monto, 0);
+    const deudas = Store.payables().filter(p => p.domain === 'personal');
+    const totalDeuda = deudas.filter(p => p.estado !== 'pagado').reduce((s, p) => s + (p.monto_total - p.pagado), 0);
     let h = this.head('Gastos personales', 'Tus salidas de la vida personal', 'Nuevo gasto', 'arrowDown', () => this.formExpense('personal'));
-    h += this.miniStats([['Total gastado', money(total), 'arrowDown', 'expense'], ['Movimientos', rows.length, 'receipt']]);
+    h += this.miniStats([['Total gastado', money(total), 'arrowDown', 'expense'], ['Movimientos', rows.length, 'receipt'],
+      ['Deudas pendientes', money(totalDeuda), 'clock', 'warn']]);
     h += this.panel('Historial de gastos personales', this.expenseTable(rows));
+    const deudaTable = deudas.length ? `<div class="table-wrap"><table class="table">
+      <thead><tr><th>A quién</th><th>Descripción</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Pendiente</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
+      <tbody>${deudas.slice().reverse().map(p => `<tr><td>${esc(p.proveedor || '—')}</td><td>${esc(p.descripcion || '—')}</td>
+        <td class="num">${money(p.monto_total)}</td><td class="num">${money(p.pagado)}</td><td class="num">${money(p.monto_total - p.pagado)}</td>
+        <td>${fdate(p.vencimiento)}</td><td><span class="badge ${p.estado === 'pagado' ? 'ok' : 'pend'}">${p.estado === 'pagado' ? 'Pagado' : 'Pendiente'}</span></td>
+        <td class="actions">${p.estado !== 'pagado' ? `<button class="iconbtn ok" data-ppay="${p.id}" title="Marcar pagado"><span data-icon="check" data-size="17"></span></button>` : ''}
+          <button class="iconbtn danger" data-pdel="${p.id}"><span data-icon="trash" data-size="17"></span></button></td></tr>`).join('')}</tbody></table></div>`
+      : this.emptyState('receipt', 'Sin deudas personales.');
+    h += `<div class="section"><div class="section-title"><span data-icon="receipt"></span> Deudas personales</div>
+      <div class="panel"><div class="panel-head"><h3>Cuentas por pagar personales</h3>
+        <button class="btn btn-primary btn-sm" id="persDeudaAdd"><span data-icon="receipt"></span> Nueva deuda</button></div>
+        <div class="panel-body">${deudaTable}</div></div></div>`;
     h += `<div class="section"><div class="section-title"><span data-icon="clock"></span> Gastos fijos personales</div>${this.fijosView('personal', false)}</div>`;
     this.paint('personales', h);
     const root = $('#screen-personales');
     $$('[data-del]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removeExpense(b.dataset.del)));
     $$('[data-vcexp]', root).forEach(b => b.onclick = () => { const e = Store.expenses().find(x => x.id === b.dataset.vcexp); if (e) this.verComprobante(e.comprobante); });
+    const da = $('#persDeudaAdd', root); if (da) da.onclick = () => this.formSalida('personal');
+    $$('[data-ppay]', root).forEach(b => b.onclick = () => { Store.payPayable(b.dataset.ppay); toast('Marcado como pagado'); this.refresh(); });
+    $$('[data-pdel]', root).forEach(b => b.onclick = () => this.confirmDelete(() => Store.removePayable(b.dataset.pdel)));
     this.bindFijos(root, 'personal');
   },
 
@@ -788,10 +936,14 @@ const App = {
   formExpense(domain) {
     const cats = GASTO_CATS[domain]; const banks = Store.banks();
     const label = domain === 'personal' ? 'Gasto personal' : 'Gasto de ganadería';
+    // Personal: texto libre (sin categorías). Ganadería: mantiene categorías.
+    const catField = domain === 'personal'
+      ? `<div class="field col-2"><label>¿Qué fue y dónde lo compraste?</label><div class="control"><input id="exCat" list="dl-gastos" placeholder="Ej: Almuerzo en el mercado, repuesto en la ferretería..."></div></div>`
+      : `<div class="field"><label>Categoría</label><select class="control" id="exCat">${opt(cats)}</select></div>`;
     const body = `<div class="form-grid">
         <div class="field"><label>Monto <span class="req">*</span></label><div class="control"><span class="prefix">Bs</span><input class="amount-big" type="number" id="exMonto" placeholder="0"></div></div>
         <div class="field"><label>Fecha</label><div class="control"><input type="date" id="exFecha" value="${Store.today()}"></div></div>
-        <div class="field"><label>Categoría</label><select class="control" id="exCat">${opt(cats)}</select></div>
+        ${catField}
         <div class="field"><label>Banco</label><select class="control" id="exBank"><option value="">Ninguno</option>${banks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
         <div class="field"><label>Detalle</label><div class="control"><input id="exDesc" placeholder="Opcional"></div></div>
         <div class="field"><label>Comprobante (foto/PDF)</label><div class="control"><input type="file" id="exComp" accept="image/*,application/pdf"></div></div>
@@ -801,7 +953,8 @@ const App = {
       { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: async () => {
         const monto = +$('#exMonto').value; if (!monto || monto <= 0) return toast('Ingresá un monto válido');
         const comp = await this.fileToDataURL($('#exComp'));
-        Store.addExpense({ domain, fecha: $('#exFecha').value, categoria: $('#exCat').value, bank_id: $('#exBank').value || null, monto, descripcion: $('#exDesc').value.trim(), comprobante: comp });
+        const categoria = domain === 'personal' ? ($('#exCat').value.trim() || 'Gasto personal') : $('#exCat').value;
+        Store.addExpense({ domain, fecha: $('#exFecha').value, categoria, bank_id: $('#exBank').value || null, monto, descripcion: $('#exDesc').value.trim(), comprobante: comp });
         this.closeModal(); toast('Gasto registrado'); this.refresh();
       } },
     ]);
@@ -811,12 +964,12 @@ const App = {
   formIncome() {
     const banks = Store.banks();
     const body = `<div class="form-grid">
-        <div class="field col-2"><label>Área</label><div class="chips" id="inDom">
+        <div class="field col-2"><label>Área</label><div class="chips area-sel" id="inDom">
           <button class="chip on" data-v="ganaderia"><span data-icon="cow"></span> Ganadería</button>
           <button class="chip" data-v="personal"><span data-icon="user"></span> Personal</button></div></div>
         <div class="field"><label>Monto <span class="req">*</span></label><div class="control"><span class="prefix">Bs</span><input class="amount-big" type="number" id="inMonto" placeholder="0"></div></div>
         <div class="field"><label>Fecha</label><div class="control"><input type="date" id="inFecha" value="${Store.today()}"></div></div>
-        <div class="field"><label>Categoría</label><select class="control" id="inCat">${opt(INGRESO_CATS.ganaderia)}</select></div>
+        <div class="field col-2"><label>¿De qué fue el ingreso?</label><div class="control"><input id="inCat" list="dl-ingresos" placeholder="Ej: Venta de leche, asesoría, cosecha de soya..."></div></div>
         <div class="field"><label>Banco</label><select class="control" id="inBank"><option value="">Ninguno</option>${banks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
         <div class="field"><label>Detalle</label><div class="control"><input id="inDesc" placeholder="Opcional"></div></div>
         <div class="field"><label>Comprobante (foto/PDF)</label><div class="control"><input type="file" id="inComp" accept="image/*,application/pdf"></div></div>
@@ -826,13 +979,12 @@ const App = {
       { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: async () => {
         const monto = +$('#inMonto').value; if (!monto || monto <= 0) return toast('Ingresá un monto válido');
         const comp = await this.fileToDataURL($('#inComp'));
-        Store.addIncome({ domain: this._inDom(), fecha: $('#inFecha').value, categoria: $('#inCat').value, bank_id: $('#inBank').value || null, monto, descripcion: $('#inDesc').value.trim(), comprobante: comp });
+        Store.addIncome({ domain: this._inDom(), fecha: $('#inFecha').value, categoria: $('#inCat').value.trim() || 'Ingreso', bank_id: $('#inBank').value || null, monto, descripcion: $('#inDesc').value.trim(), comprobante: comp });
         this.closeModal(); toast('Ingreso registrado'); this.refresh();
       } },
     ]);
     let dom = 'ganaderia';
-    $$('#inDom .chip').forEach(c => c.onclick = () => { dom = c.dataset.v; $$('#inDom .chip').forEach(x => x.classList.remove('on')); c.classList.add('on');
-      $('#inCat').innerHTML = opt(INGRESO_CATS[dom]); this.injectIcons($('#inDom')); });
+    $$('#inDom .chip').forEach(c => c.onclick = () => { dom = c.dataset.v; $$('#inDom .chip').forEach(x => x.classList.remove('on')); c.classList.add('on'); });
     this._inDom = () => dom;
   },
 
@@ -841,46 +993,48 @@ const App = {
     const banks = Store.banks();
     const body = `<p class="sub" style="margin-bottom:16px;color:var(--c-muted)">Registrá un gasto en segundos.</p>
       <div class="form-grid">
-        <div class="field col-2"><label>¿Qué tipo de gasto?</label><div class="chips" id="qDom">
-          <button class="chip on" data-v="ganaderia"><span data-icon="cow"></span> Ganadería</button>
-          <button class="chip" data-v="personal"><span data-icon="user"></span> Personal</button></div></div>
+        <div class="field col-2"><label>¿Qué tipo de gasto?</label><div class="chips area-sel" id="qDom">
+          <button class="chip" data-v="ganaderia"><span data-icon="cow"></span> Ganadería</button>
+          <button class="chip on" data-v="personal"><span data-icon="user"></span> Personal</button></div></div>
         <div class="field"><label>Monto <span class="req">*</span></label><div class="control"><span class="prefix">Bs</span><input class="amount-big" type="number" id="qMonto" placeholder="0" autofocus></div></div>
         <div class="field"><label>Banco</label><select class="control" id="qBank"><option value="">Efectivo</option>${banks.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>
-        <div class="field col-2"><label>Categoría</label><select class="control" id="qCat">${opt(GASTO_CATS.ganaderia)}</select></div>
+        <div class="field col-2"><label>¿Qué fue y dónde lo compraste?</label><div class="control"><input id="qCat" list="dl-gastos" placeholder="Ej: Almuerzo en el mercado, repuesto en la ferretería..."></div></div>
       </div>`;
     this.openModal('Gasto rápido', body, [
       { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
       { label: 'Guardar gasto', cls: 'btn-primary', icon: 'check', fn: () => {
         const monto = +$('#qMonto').value; if (!monto || monto <= 0) return toast('Ingresá un monto');
-        Store.addExpense({ domain: this._qDom(), fecha: Store.today(), categoria: $('#qCat').value, bank_id: $('#qBank').value || null, monto, descripcion: '' });
+        Store.addExpense({ domain: this._qDom(), fecha: Store.today(), categoria: $('#qCat').value.trim() || 'Gasto rápido', bank_id: $('#qBank').value || null, monto, descripcion: '' });
         this.closeModal(); toast('Gasto registrado'); this.refresh();
       } },
     ]);
-    let dom = 'ganaderia';
-    $$('#qDom .chip').forEach(c => c.onclick = () => { dom = c.dataset.v; $$('#qDom .chip').forEach(x => x.classList.remove('on')); c.classList.add('on');
-      $('#qCat').innerHTML = opt(GASTO_CATS[dom]); this.injectIcons($('#qDom')); });
+    let dom = 'personal';
+    $$('#qDom .chip').forEach(c => c.onclick = () => { dom = c.dataset.v; $$('#qDom .chip').forEach(x => x.classList.remove('on')); c.classList.add('on'); });
     this._qDom = () => dom;
   },
 
-  formSalida() {
-    const body = `<div class="form-grid">
-        <div class="field col-2"><label>Área</label>
+  formSalida(forceDomain) {
+    const areaField = forceDomain ? '' : `<div class="field col-2"><label>Área</label>
           <div class="chips" id="sDomain">
             <button class="chip on" data-v="ganaderia"><span data-icon="cow"></span> Ganadería</button>
             <button class="chip" data-v="personal"><span data-icon="user"></span> Personal</button>
-          </div></div>
-        <div class="field"><label>Proveedor <span class="req">*</span></label><div class="control"><input id="sProv" placeholder="A quién se le debe"></div></div>
+          </div></div>`;
+    const placeholder = forceDomain === 'personal' ? 'Ej: cuota del crédito, fiado en la tienda' : 'Ej: saldo compra de ganado';
+    const body = `<div class="form-grid">
+        ${areaField}
+        <div class="field"><label>Proveedor <span class="req">*</span></label><div class="control"><input id="sProv" list="dl-proveedores" placeholder="A quién se le debe"></div></div>
         <div class="field"><label>Vencimiento</label><div class="control"><input type="date" id="sVence"></div></div>
         <div class="field"><label>Monto Total <span class="req">*</span></label><div class="control"><span class="prefix">Bs</span><input type="number" id="sTotal" placeholder="0"></div></div>
         <div class="field"><label>Ya pagado</label><div class="control"><span class="prefix">Bs</span><input type="number" id="sPagado" value="0"></div></div>
-        <div class="field col-2"><label>Descripción</label><div class="control"><input id="sDesc" placeholder="Ej: saldo compra de ganado"></div></div>
+        <div class="field col-2"><label>Descripción</label><div class="control"><input id="sDesc" placeholder="${placeholder}"></div></div>
       </div>`;
-    this.openModal('Nueva Cuenta por Pagar', body, [
+    const title = forceDomain === 'personal' ? 'Nueva Deuda Personal' : forceDomain === 'ganaderia' ? 'Nueva Deuda de Ganadería' : 'Nueva Cuenta por Pagar';
+    this.openModal(title, body, [
       { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
       { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: () => this.saveSalida() },
     ]);
-    let dom = 'ganaderia';
-    $$('#sDomain .chip').forEach(c => c.onclick = () => { dom = c.dataset.v; $$('#sDomain .chip').forEach(x => x.classList.remove('on')); c.classList.add('on'); });
+    let dom = forceDomain || 'ganaderia';
+    if (!forceDomain) $$('#sDomain .chip').forEach(c => c.onclick = () => { dom = c.dataset.v; $$('#sDomain .chip').forEach(x => x.classList.remove('on')); c.classList.add('on'); });
     this._salidaDom = () => dom;
   },
   saveSalida() {
@@ -895,19 +1049,26 @@ const App = {
   formEmpleado(id) {
     const e = id ? Store.employees().find(x => x.id === id) : {};
     const body = `<div class="form-grid">
-      <div class="field"><label>Nombre <span class="req">*</span></label><div class="control"><input id="eNom" value="${esc(e.nombre || '')}" placeholder="Nombre completo"></div></div>
+      <div class="field"><label>Nombre <span class="req">*</span></label><div class="control"><input id="eNom" list="dl-empleados" value="${esc(e.nombre || '')}" placeholder="Nombre completo"></div></div>
       <div class="field"><label>Documento / CI</label><div class="control"><input id="eDoc" value="${esc(e.documento || '')}" placeholder="CI"></div></div>
       <div class="field"><label>Puesto</label><div class="control"><input id="ePue" value="${esc(e.puesto || 'Vaquero')}" placeholder="Vaquero"></div></div>
       <div class="field"><label>Teléfono</label><div class="control"><input id="eTel" value="${esc(e.telefono || '')}" placeholder="Celular"></div></div>
       <div class="field"><label>Salario mensual</label><div class="control"><span class="prefix">Bs</span><input type="number" id="eSal" value="${e.salario || 0}"></div></div>
       <div class="field"><label>Estado</label><select class="control" id="eEst">${opt(['activo','inactivo'], e.estado || 'activo')}</select></div>
+      <div class="field"><label>Fecha de ingreso</label><div class="control"><input type="date" id="eIng" value="${e.fecha_ingreso || ''}"></div></div>
+      <div class="field"><label>Fecha de nacimiento</label><div class="control"><input type="date" id="eNac" value="${e.fecha_nacimiento || ''}"></div></div>
+      <div class="field col-2"><label>Dirección</label><div class="control"><input id="eDir" value="${esc(e.direccion || '')}" placeholder="Dónde vive"></div></div>
+      <div class="field col-2"><label>Contacto de emergencia</label><div class="control"><input id="eEmg" value="${esc(e.contacto_emergencia || '')}" placeholder="Nombre y teléfono de un familiar"></div></div>
+      <div class="field col-2"><label>Notas</label><div class="control"><input id="eNot" value="${esc(e.notas || '')}" placeholder="Observaciones (opcional)"></div></div>
     </div>`;
     this.openModal(id ? 'Editar Empleado' : 'Nuevo Empleado', body, [
       { label: 'Cancelar', cls: 'btn-ghost', fn: () => this.closeModal() },
       { label: 'Guardar', cls: 'btn-primary', icon: 'check', fn: () => {
         const nom = $('#eNom').value.trim(); if (!nom) return toast('Falta el nombre');
         const data = { nombre: nom, documento: $('#eDoc').value.trim(), puesto: $('#ePue').value.trim() || 'Vaquero',
-          telefono: $('#eTel').value.trim(), salario: +$('#eSal').value || 0, estado: $('#eEst').value };
+          telefono: $('#eTel').value.trim(), salario: +$('#eSal').value || 0, estado: $('#eEst').value,
+          fecha_ingreso: $('#eIng').value, fecha_nacimiento: $('#eNac').value, direccion: $('#eDir').value.trim(),
+          contacto_emergencia: $('#eEmg').value.trim(), notas: $('#eNot').value.trim() };
         id ? Store.updateEmployee(id, data) : Store.addEmployee(data);
         this.closeModal(); toast('Empleado guardado'); this.refresh();
       } },
@@ -938,19 +1099,91 @@ const App = {
     const e = Store.employees().find(x => x.id === id); if (!e) return;
     const pagos = (e.pagos || []).slice().reverse();
     const totalPagado = pagos.reduce((s, p) => s + p.monto, 0);
+    const byMonth = {};
+    pagos.forEach(p => { const m = (p.fecha || '').slice(0, 7); (byMonth[m] = byMonth[m] || []).push(p); });
+    const months = Object.keys(byMonth).sort().reverse();
+    const monthBlocks = months.map(m => {
+      const label = m ? new Date(m + '-01T00:00:00').toLocaleDateString('es-BO', { month: 'long', year: 'numeric' }) : 'Sin fecha';
+      const list = byMonth[m];
+      const subt = list.reduce((s, p) => s + p.monto, 0);
+      return `<div style="margin-bottom:18px">
+        <div class="panel-head" style="padding:0 0 8px">
+          <h3 style="text-transform:capitalize">${esc(label)} · ${money(subt)}</h3>
+          <button class="btn btn-primary btn-sm" data-mes="${m}"><span data-icon="pdf"></span> Extracto PDF</button></div>
+        <table class="table"><thead><tr><th>Fecha</th><th>Concepto</th><th>Banco</th><th class="num">Monto</th><th>Comp.</th></tr></thead>
+        <tbody>${list.map(p => `<tr><td>${fdate(p.fecha)}</td><td>${esc(p.concepto)}</td><td>${esc(Store.bankName(p.bank_id))}</td><td class="num">${money(p.monto)}</td>
+          <td>${p.comprobante ? `<button class="iconbtn" data-vcp="${p.id}" title="Ver comprobante"><span data-icon="receipt" data-size="16"></span></button>` : '—'}</td></tr>`).join('')}</tbody></table>
+      </div>`;
+    }).join('');
+    const fichaRow = (k, v) => v ? `<div class="ficha-row"><span class="k">${k}</span><span class="v">${esc(v)}</span></div>` : '';
+    const ficha = `<div class="panel" style="margin-bottom:16px"><div class="panel-head"><h3>Ficha del empleado</h3>
+        <button class="btn btn-ghost btn-sm" data-editficha title="Editar datos"><span data-icon="edit"></span> Editar</button></div>
+      <div class="panel-body" style="padding:14px 18px"><div class="ficha-grid">
+        ${fichaRow('Documento / CI', e.documento)}
+        ${fichaRow('Puesto', e.puesto)}
+        ${fichaRow('Teléfono', e.telefono)}
+        ${fichaRow('Fecha de ingreso', e.fecha_ingreso ? fdate(e.fecha_ingreso) : '')}
+        ${fichaRow('Fecha de nacimiento', e.fecha_nacimiento ? fdate(e.fecha_nacimiento) : '')}
+        ${fichaRow('Dirección', e.direccion)}
+        ${fichaRow('Contacto de emergencia', e.contacto_emergencia)}
+        ${fichaRow('Estado', e.estado === 'inactivo' ? 'Inactivo' : 'Activo')}
+        ${e.notas ? `<div class="ficha-row" style="grid-column:1/-1"><span class="k">Notas</span><span class="v">${esc(e.notas)}</span></div>` : ''}
+      </div></div></div>`;
     const body = `<div class="stat-grid" style="margin-bottom:16px">
       <div class="stat"><div class="lbl">Salario</div><div class="val" style="font-size:22px">${money(e.salario)}</div></div>
       <div class="stat"><div class="lbl">Total pagado</div><div class="val income" style="font-size:22px">${money(totalPagado)}</div></div>
     </div>
-    ${pagos.length ? `<table class="table"><thead><tr><th>Fecha</th><th>Concepto</th><th>Banco</th><th class="num">Monto</th><th>Comp.</th></tr></thead>
-      <tbody>${pagos.map(p => `<tr><td>${fdate(p.fecha)}</td><td>${esc(p.concepto)}</td><td>${esc(Store.bankName(p.bank_id))}</td><td class="num">${money(p.monto)}</td>
-        <td>${p.comprobante ? `<button class="iconbtn" data-vcp="${p.id}" title="Ver comprobante"><span data-icon="receipt" data-size="16"></span></button>` : '—'}</td></tr>`).join('')}</tbody></table>`
-      : `<div class="empty">Sin pagos registrados todavía.</div>`}`;
+    ${ficha}
+    ${pagos.length ? monthBlocks : `<div class="empty">Sin pagos registrados todavía.</div>`}`;
     this.openModal(`Historial · ${esc(e.nombre)}`, body, [
       { label: 'Cerrar', cls: 'btn-ghost', fn: () => this.closeModal() },
-      { label: 'Exportar PDF', cls: 'btn-primary', icon: 'pdf', fn: () => this.exportEmpleadoPDF(id) },
+      { label: 'Exportar todo', cls: 'btn-primary', icon: 'pdf', fn: () => this.exportEmpleadoPDF(id) },
     ]);
     $$('#modalBody [data-vcp]').forEach(b => b.onclick = () => { const p = (e.pagos || []).find(x => x.id === b.dataset.vcp); if (p) this.verComprobante(p.comprobante); });
+    $$('#modalBody [data-mes]').forEach(b => b.onclick = () => this.exportEmpleadoMes(id, b.dataset.mes));
+    const ef = $('#modalBody [data-editficha]'); if (ef) ef.onclick = () => this.formEmpleado(id);
+  },
+  exportEmpleadoMes(id, month) {
+    const e = Store.employees().find(x => x.id === id); if (!e) return;
+    const list = (e.pagos || []).filter(p => (p.fecha || '').slice(0, 7) === month).sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+    if (!list.length) return toast('Sin pagos ese mes');
+    const monthName = month ? new Date(month + '-01T00:00:00').toLocaleDateString('es-BO', { month: 'long', year: 'numeric' }) : 'Sin fecha';
+    const total = list.reduce((s, p) => s + p.monto, 0);
+    const logo = `${location.origin}${location.pathname.replace(/index\.html$/, '')}assets/img/logo.jpg`;
+    const filas = list.map(p => `<tr><td>${fdate(p.fecha)}</td><td>${esc(p.concepto)}</td><td>${esc(Store.bankName(p.bank_id))}</td><td class="num">${money(p.monto)}</td></tr>`).join('');
+    const comps = list.filter(p => p.comprobante).map(p => {
+      const inner = String(p.comprobante).startsWith('data:application/pdf')
+        ? `<div class="pdfbox">Comprobante PDF adjunto</div>` : `<img src="${p.comprobante}">`;
+      return `<div class="comp"><div class="cap">${fdate(p.fecha)} · ${money(p.monto)}</div>${inner}</div>`;
+    }).join('');
+    const win = window.open('', '_blank');
+    win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Extracto ${esc(e.nombre)} ${monthName}</title>
+      <style>body{font-family:Arial,sans-serif;color:#1c1a14;padding:38px;max-width:760px;margin:0 auto}
+      .hd{display:flex;align-items:center;gap:16px;border-bottom:3px solid #c8a44d;padding-bottom:16px;margin-bottom:18px}
+      .hd img{width:78px;height:78px;object-fit:contain}.hd h1{font-size:20px;margin:0}.hd p{margin:2px 0;color:#666;font-size:13px}
+      .meta{font-size:13px;color:#555;margin:0 0 14px}
+      h2{font-size:15px;margin:20px 0 8px}table{width:100%;border-collapse:collapse;font-size:13px}
+      th{background:#f3efe3;text-align:left;padding:9px 12px;border-bottom:2px solid #ddd}
+      td{padding:9px 12px;border-bottom:1px solid #eee}.num{text-align:right}
+      tfoot td{font-weight:bold;border-top:2px solid #c8a44d}
+      .comps{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px}
+      .comp{width:160px;border:1px solid #e6e1d4;border-radius:8px;padding:8px;font-size:10px}
+      .comp img{width:100%;height:auto;border-radius:4px;display:block}
+      .comp .cap{color:#666;margin-bottom:6px}
+      .pdfbox{background:#f3efe3;border-radius:4px;padding:24px 8px;text-align:center;color:#888}
+      .foot{margin-top:28px;font-size:11px;color:#999;text-align:center}</style></head><body>
+      <div class="hd"><img src="${logo}">
+        <div><h1>Ganadería Dyck Manantial</h1><p>Extracto de pagos — ${esc(e.nombre)}</p>
+        <p>Emitido: ${new Date().toLocaleDateString('es-BO')}</p></div></div>
+      <p class="meta"><b>Empleado:</b> ${esc(e.nombre)} · <b>Puesto:</b> ${esc(e.puesto)} · <b>Período:</b> <span style="text-transform:capitalize">${monthName}</span></p>
+      <h2>Movimientos del mes</h2>
+      <table><thead><tr><th>Fecha</th><th>Concepto</th><th>Banco</th><th class="num">Monto</th></tr></thead>
+        <tbody>${filas}</tbody>
+        <tfoot><tr><td colspan="3">Total pagado en el mes</td><td class="num">${money(total)}</td></tr></tfoot></table>
+      ${comps ? `<h2>Comprobantes</h2><div class="comps">${comps}</div>` : ''}
+      <div class="foot">Documento generado por el sistema Dyck Manantial</div>
+      <script>window.onload=()=>window.print()<\/script></body></html>`);
+    win.document.close();
   },
   exportEmpleadoPDF(id) {
     const e = Store.employees().find(x => x.id === id); if (!e) return;
@@ -960,15 +1193,15 @@ const App = {
     win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Historial ${esc(e.nombre)}</title>
       <style>
         body{font-family:Arial,sans-serif;color:#241d13;padding:38px;max-width:760px;margin:0 auto}
-        .hd{display:flex;align-items:center;gap:16px;border-bottom:3px solid #2f7d55;padding-bottom:16px;margin-bottom:24px}
+        .hd{display:flex;align-items:center;gap:16px;border-bottom:3px solid #c8a44d;padding-bottom:16px;margin-bottom:24px}
         .hd img{width:84px;height:84px;object-fit:contain}
-        .hd h1{font-size:22px;margin:0;color:#2f7d55} .hd p{margin:2px 0;color:#666;font-size:13px}
+        .hd h1{font-size:22px;margin:0;color:#c8a44d} .hd p{margin:2px 0;color:#666;font-size:13px}
         h2{font-size:16px;margin:22px 0 10px} .meta{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:14px}
         .meta b{color:#555}
         table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
         th{background:#f1efe7;text-align:left;padding:9px 12px;border-bottom:2px solid #ddd}
         td{padding:9px 12px;border-bottom:1px solid #eee} .num{text-align:right}
-        tfoot td{font-weight:bold;border-top:2px solid #2f7d55}
+        tfoot td{font-weight:bold;border-top:2px solid #c8a44d}
         .foot{margin-top:30px;font-size:11px;color:#999;text-align:center}
       </style></head><body>
       <div class="hd"><img src="${location.origin}${location.pathname.replace(/index\.html$/, '')}assets/img/logo.jpg">
@@ -978,7 +1211,10 @@ const App = {
       <div class="meta">
         <div><b>Nombre:</b> ${esc(e.nombre)}</div><div><b>Documento:</b> ${esc(e.documento || '—')}</div>
         <div><b>Puesto:</b> ${esc(e.puesto)}</div><div><b>Teléfono:</b> ${esc(e.telefono || '—')}</div>
+        <div><b>Fecha de ingreso:</b> ${e.fecha_ingreso ? fdate(e.fecha_ingreso) : '—'}</div><div><b>Fecha de nacimiento:</b> ${e.fecha_nacimiento ? fdate(e.fecha_nacimiento) : '—'}</div>
+        <div><b>Dirección:</b> ${esc(e.direccion || '—')}</div><div><b>Contacto de emergencia:</b> ${esc(e.contacto_emergencia || '—')}</div>
         <div><b>Salario mensual:</b> ${money(e.salario)}</div><div><b>Estado:</b> ${e.estado === 'inactivo' ? 'Inactivo' : 'Activo'}</div>
+        ${e.notas ? `<div style="grid-column:1/-1"><b>Notas:</b> ${esc(e.notas)}</div>` : ''}
       </div>
       <h2>Historial de pagos</h2>
       ${pagos.length ? `<table><thead><tr><th>Fecha</th><th>Concepto</th><th>Banco</th><th class="num">Monto</th></tr></thead>
@@ -1143,9 +1379,22 @@ const App = {
   },
   emptyState(ic, msg) { return `<div class="empty"><span data-icon="${ic}" data-size="40"></span><div>${esc(msg)}</div></div>`; },
 
+  // Autocompletado: datalists construidos con la data existente
+  uniqVals(arr) { return [...new Set(arr.map(x => (x == null ? '' : String(x)).trim()).filter(Boolean))].sort().slice(0, 300); },
+  datalistsHTML() {
+    const items = [...Store.purchases(), ...Store.sales()].flatMap(x => x.items || []);
+    const dl = (id, vals) => `<datalist id="${id}">${this.uniqVals(vals).map(v => `<option value="${esc(v)}"></option>`).join('')}</datalist>`;
+    return dl('dl-proveedores', [...Store.purchases().map(p => p.proveedor), ...Store.payables().map(p => p.proveedor), ...Store.loans().map(l => l.prestamista)])
+      + dl('dl-clientes', Store.sales().map(s => s.cliente))
+      + dl('dl-razas', [...Store.animals().map(a => a.raza), ...items.map(i => i.raza)])
+      + dl('dl-gastos', [...Store.expenses().map(e => e.categoria), ...Store.expenses().map(e => e.descripcion)])
+      + dl('dl-ingresos', Store.incomes().map(i => i.categoria))
+      + dl('dl-prestamistas', Store.loans().map(l => l.prestamista))
+      + dl('dl-empleados', Store.employees().map(e => e.nombre));
+  },
   openModal(title, body, actions = []) {
     $('#modalTitle').textContent = title;
-    $('#modalBody').innerHTML = body;
+    $('#modalBody').innerHTML = body + this.datalistsHTML();
     $('#modalFoot').innerHTML = actions.map((a, i) => `<button class="btn ${a.cls}" data-act="${i}">${a.icon ? `<span data-icon="${a.icon}"></span>` : ''} ${esc(a.label)}</button>`).join('');
     this.injectIcons($('#modal'));
     $$('#modalFoot [data-act]').forEach(b => b.onclick = () => actions[+b.dataset.act].fn());
@@ -1178,7 +1427,7 @@ const App = {
     { sel: '[data-go="ganaderia"]', title: 'Ganadería', text: 'Todo el campo en un solo lugar: animales (uno por uno, con muertes y motivos), compras, ventas, gastos, gastos FIJOS (sueldos y mensuales) con botón Pagado, empleados y deudas.' },
     { sel: '[data-go="personales"]', title: 'Gastos personales', text: 'Tus salidas personales, separadas de la ganadería: comida, salud, transporte, vivienda. También tus gastos fijos personales.' },
     { sel: '[data-go="ingresos"]', title: 'Ingresos', text: 'Todo lo que entra, ganadería y personal juntos. Las ventas de ganado aparecen acá automáticamente.' },
-    { sel: '#fabQuick', title: 'Gasto rápido', text: 'Para gastos que pasan y ya: en segundos cargás área, monto y banco. Los gastos FIJOS (que se repiten cada mes) se cargan en la pestaña Fijos de Ganadería.' },
+    { sel: '#fabQuick', title: 'Gasto rápido', text: 'Para gastos personales que pasan y ya: en segundos cargás monto, banco y qué fue. Los gastos FIJOS (que se repiten cada mes) se cargan en la pestaña Fijos de Ganadería.' },
     { sel: '#btnSettings', title: 'Ajustes', text: 'Tus bancos, el color del sistema, exportar datos o volver a ver este tour cuando quieras.' },
   ],
   tourIndex: 0,

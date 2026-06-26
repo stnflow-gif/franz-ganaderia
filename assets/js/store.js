@@ -24,12 +24,19 @@ const Store = (() => {
     incomes: [],       // {id, fecha, domain, categoria, bank_id, monto, descripcion}
     payables: [],      // {id, fecha, proveedor, descripcion, domain, monto_total, pagado, vencimiento, estado}
     recurring: [],     // {id, tipo:'gasto', domain, categoria, nombre, monto, bank_id, dia, active, paid:{'YYYY-MM':expenseId}}
+    loans: [],         // {id, prestamista, monto, fecha, vencimiento, interes_pct, notas, bank_id, pagos:[{id,monto,fecha,bank_id}]}
     settings: { theme: 'glass', currency: 'Bs', onboarded: false, user: null },
   });
 
   function uid() { return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
   function today() { return new Date().toISOString().slice(0, 10); }
   function now() { return new Date().toISOString(); }
+
+  // Helpers de lote de animales (compatibles con registros viejos individuales)
+  function totalDe(a) { return a.cantidad != null ? +a.cantidad : 1; }
+  function muertosDe(a) { return a.muertos != null ? +a.muertos : (a.estado === 'muerto' ? 1 : 0); }
+  function vendidosDe(a) { return a.vendidos != null ? +a.vendidos : (a.estado === 'vendido' ? 1 : 0); }
+  function vivosDe(a) { return Math.max(0, totalDe(a) - muertosDe(a) - vendidosDe(a)); }
 
   let db = load();
 
@@ -66,7 +73,9 @@ const Store = (() => {
     employees: () => db.employees,
     activeEmployees: () => db.employees.filter(e => e.estado !== 'inactivo'),
     addEmployee(e) { const row = { id: uid(), nombre: e.nombre, documento: e.documento || '', puesto: e.puesto || 'Vaquero',
-      telefono: e.telefono || '', salario: +e.salario || 0, estado: e.estado || 'activo', pagos: [], created_at: now() };
+      telefono: e.telefono || '', salario: +e.salario || 0, estado: e.estado || 'activo',
+      fecha_ingreso: e.fecha_ingreso || '', fecha_nacimiento: e.fecha_nacimiento || '', direccion: e.direccion || '',
+      contacto_emergencia: e.contacto_emergencia || '', notas: e.notas || '', pagos: [], created_at: now() };
       db.employees.push(row); commit('insert', 'employees', row); return row; },
     updateEmployee(id, patch) { const e = db.employees.find(x => x.id === id); if (e) { Object.assign(e, patch); commit('update', 'employees', e); } },
     removeEmployee(id) { db.employees = db.employees.filter(e => e.id !== id); commit('delete', 'employees', { id }); },
@@ -82,12 +91,15 @@ const Store = (() => {
 
     // ---------- Compras ----------
     purchases: () => db.purchases,
-    addPurchase(p) { const total = sum(p.items || [], it => (+it.cantidad || 0) * (+it.precio || 0));
+    addPurchase(p) { const computed = sum(p.items || [], it => (+it.cantidad || 0) * (+it.precio || 0));
+      // Precio final directo si se ingresó (Franz compra lotes grandes a precio cerrado)
+      const total = (+p.total > 0) ? +p.total : computed;
       const row = { id: uid(), fecha: p.fecha || today(), proveedor: p.proveedor || '', bank_id: p.bank_id || null,
         metodo_pago: p.metodo_pago || 'Efectivo', observaciones: p.observaciones || '', items: p.items || [],
-        total, pagado: p.metodo_pago === 'Crédito' ? 0 : total, created_at: now() };
+        loan_id: p.loan_id || null, total, pagado: p.metodo_pago === 'Crédito' ? 0 : total, created_at: now() };
       db.purchases.push(row);
-      // Si es a crédito, genera cuenta por pagar (Salida)
+      // Si es a crédito, genera cuenta por pagar (Salida). Si se pagó con préstamo, NO genera deuda
+      // (la deuda ya es el préstamo registrado, así no se cuenta doble).
       if (p.metodo_pago === 'Crédito' && total > 0) {
         db.payables.push({ id: uid(), fecha: row.fecha, proveedor: row.proveedor, descripcion: 'Compra de ganado',
           domain: 'ganaderia', monto_total: total, pagado: 0, vencimiento: p.vencimiento || '', estado: 'pendiente', created_at: now() });
@@ -153,36 +165,70 @@ const Store = (() => {
       const expId = r.paid[month]; this.removeExpense(expId); delete r.paid[month]; commit('update', 'recurring', r); },
     recurringMonthlyTotal: (domain) => sum(db.recurring.filter(r => r.active !== false && (!domain || r.domain === domain)), r => r.monto),
 
+    // ---------- Préstamos ----------
+    loans: () => db.loans,
+    addLoan(l) { const row = { id: uid(), prestamista: l.prestamista || '', monto: +l.monto || 0, fecha: l.fecha || today(),
+      vencimiento: l.vencimiento || '', interes_pct: +l.interes_pct || 0, notas: l.notas || '', bank_id: l.bank_id || null,
+      pagos: [], created_at: now() };
+      db.loans.push(row); commit('insert', 'loans', row); return row; },
+    updateLoan(id, patch) { const l = db.loans.find(x => x.id === id); if (l) { Object.assign(l, patch); commit('update', 'loans', l); } },
+    removeLoan(id) { db.loans = db.loans.filter(x => x.id !== id); commit('delete', 'loans', { id }); },
+    payLoan(id, p) { const l = db.loans.find(x => x.id === id); if (!l) return;
+      l.pagos = l.pagos || []; l.pagos.push({ id: uid(), monto: +p.monto || 0, fecha: p.fecha || today(), bank_id: p.bank_id || null });
+      commit('update', 'loans', l); },
+    loanPaid: (l) => sum(l.pagos || [], p => +p.monto || 0),
+    loanBalance(l) { return Math.max(0, (+l.monto || 0) - this.loanPaid(l)); },
+    loansPendingTotal() { return db.loans.reduce((s, l) => s + this.loanBalance(l), 0); },
+
     // ---------- Animales (registro individual del hato) ----------
     animals: () => db.animals,
-    livingAnimals: () => db.animals.filter(a => a.estado === 'vivo'),
+    // Helpers de lote expuestos a la UI
+    loteTotal: totalDe, loteMuertos: muertosDe, loteVendidos: vendidosDe, loteVivos: vivosDe,
+    livingAnimals: () => db.animals.filter(a => vivosDe(a) > 0),
     addAnimal(a) {
-      const row = { id: uid(), codigo: a.codigo || '', categoria: a.categoria || 'Vaca', raza: a.raza || '',
-        sexo: a.sexo || 'Hembra', edad_meses: +a.edad_meses || 0, peso: +a.peso || 0, origen: a.origen || 'compra',
-        precio: +a.precio || 0, fecha_ingreso: a.fecha_ingreso || today(), estado: 'vivo', fecha_baja: null, motivo: '', created_at: now() };
+      const cantidad = Math.max(1, Math.round(+a.cantidad || 1));
+      const row = { id: uid(), categoria: a.categoria || 'Vaca', raza: a.raza || '',
+        edad_meses: +a.edad_meses || 0, peso: +a.peso || 0, origen: a.origen || 'compra',
+        precio: +a.precio || 0, fecha_ingreso: a.fecha_ingreso || today(),
+        cantidad, muertos: 0, vendidos: 0, eventos: [], created_at: now() };
       db.animals.push(row); commit('insert', 'animals', row); return row;
     },
-    updateAnimal(id, patch) { const a = db.animals.find(x => x.id === id); if (a) { Object.assign(a, patch); commit('update', 'animals', a); } },
-    killAnimal(id, info) { const a = db.animals.find(x => x.id === id); if (!a) return;
-      a.estado = 'muerto'; a.fecha_baja = info.fecha || today(); a.motivo = info.motivo || 'Desconocido'; commit('update', 'animals', a); },
-    sellAnimalMark(id, fecha) { const a = db.animals.find(x => x.id === id); if (!a) return;
-      a.estado = 'vendido'; a.fecha_baja = fecha || today(); commit('update', 'animals', a); },
-    reviveAnimal(id) { const a = db.animals.find(x => x.id === id); if (a) { a.estado = 'vivo'; a.fecha_baja = null; a.motivo = ''; commit('update', 'animals', a); } },
+    updateAnimal(id, patch) { const a = db.animals.find(x => x.id === id); if (!a) return;
+      if (patch.cantidad != null) patch.cantidad = Math.max(1, Math.round(+patch.cantidad || 1));
+      Object.assign(a, patch); commit('update', 'animals', a); },
+    // Registrar muerte de N cabezas dentro de un lote
+    registrarMuerte(id, info) { const a = db.animals.find(x => x.id === id); if (!a) return;
+      const c = Math.min(vivosDe(a), Math.max(1, Math.round(+info.cantidad || 1))); if (c <= 0) return;
+      a.cantidad = totalDe(a); a.muertos = muertosDe(a) + c; a.vendidos = vendidosDe(a);
+      delete a.estado; delete a.fecha_baja; delete a.motivo;
+      a.eventos = a.eventos || []; a.eventos.push({ tipo: 'muerte', cantidad: c, motivo: info.motivo || 'Desconocido', fecha: info.fecha || today() });
+      commit('update', 'animals', a); },
+    // Registrar venta/salida de N cabezas del inventario (lo financiero va en Ventas)
+    registrarVentaLote(id, info) { const a = db.animals.find(x => x.id === id); if (!a) return;
+      const c = Math.min(vivosDe(a), Math.max(1, Math.round(+info.cantidad || 1))); if (c <= 0) return;
+      a.cantidad = totalDe(a); a.muertos = muertosDe(a); a.vendidos = vendidosDe(a) + c;
+      delete a.estado; delete a.fecha_baja;
+      a.eventos = a.eventos || []; a.eventos.push({ tipo: 'venta', cantidad: c, fecha: info.fecha || today() });
+      commit('update', 'animals', a); },
     removeAnimal(id) { db.animals = db.animals.filter(a => a.id !== id); commit('delete', 'animals', { id }); },
-    deaths: () => db.animals.filter(a => a.estado === 'muerto'),
+    deaths: () => db.animals.filter(a => muertosDe(a) > 0),
+    totalMuertes() { return db.animals.reduce((s, a) => s + muertosDe(a), 0); },
+    totalVendidas() { return db.animals.reduce((s, a) => s + vendidosDe(a), 0); },
     deathsByReason() {
-      const m = {}; db.animals.filter(a => a.estado === 'muerto').forEach(a => { const k = a.motivo || 'Desconocido'; m[k] = (m[k] || 0) + 1; });
+      const m = {};
+      db.animals.forEach(a => {
+        if (a.eventos && a.eventos.length) a.eventos.filter(e => e.tipo === 'muerte').forEach(e => { const k = e.motivo || 'Desconocido'; m[k] = (m[k] || 0) + (+e.cantidad || 0); });
+        else if (muertosDe(a) > 0) { const k = a.motivo || 'Desconocido'; m[k] = (m[k] || 0) + muertosDe(a); }
+      });
       return Object.entries(m).map(([motivo, n]) => ({ motivo, n })).sort((a, b) => b.n - a.n);
     },
 
     // ---------- Inventario de hato ----------
-    // Cabezas vivas: registro individual si existe; si no, estimación por compras−ventas
-    headCount() {
-      if (db.animals.length) return db.animals.filter(a => a.estado === 'vivo').length;
-      const compra = sum(db.purchases.flatMap(p => p.items || []), it => +it.cantidad || 0);
-      const venta = sum(db.sales.flatMap(s => s.items || []), it => +it.cantidad || 0);
-      return compra - venta;
-    },
+    // Cabezas vivas = nacimientos vivos (registro) + comprados − vendidos
+    bornAlive() { return db.animals.reduce((s, a) => s + vivosDe(a), 0); },
+    boughtHeads() { return sum(db.purchases.flatMap(p => p.items || []), it => +it.cantidad || 0); },
+    soldHeads() { return sum(db.sales.flatMap(s => s.items || []), it => +it.cantidad || 0); },
+    headCount() { return this.bornAlive() + this.boughtHeads() - this.soldHeads(); },
 
     // ---------- Dashboard financiero ----------
     finance(month) {
@@ -294,15 +340,17 @@ const Store = (() => {
       // Cuenta por pagar
       this.addPayable({ fecha: mAgo(0), proveedor: 'Veterinaria El Campo', descripcion: 'Vacunas a crédito',
         domain: 'ganaderia', monto_total: 1500, pagado: 500, vencimiento: mAgo(-1) });
-      // Animales individuales
-      const razas = ['Nelore', 'Brahman', 'Criolla', 'Gyr'];
-      for (let i = 1; i <= 24; i++) this.addAnimal({ codigo: 'VAC-' + String(i).padStart(3, '0'),
-        categoria: i % 6 === 0 ? 'Toro' : i % 3 === 0 ? 'Vaquilla' : 'Vaca', raza: razas[i % 4],
-        sexo: i % 6 === 0 ? 'Macho' : 'Hembra', edad_meses: 12 + (i % 40), peso: 280 + (i % 120),
-        origen: i <= 10 ? 'compra' : 'nacimiento', precio: 3500, fecha_ingreso: mAgo(4) });
-      // Dos muertes con motivo
-      this.killAnimal(db.animals[3].id, { fecha: mAgo(1), motivo: 'Enfermedad' });
-      this.killAnimal(db.animals[7].id, { fecha: mAgo(0), motivo: 'Accidente' });
+      // Préstamo de ejemplo
+      const pr1 = this.addLoan({ prestamista: 'Banco Ganadero', monto: 50000, fecha: mAgo(3), vencimiento: mAgo(-6), interes_pct: 8, notas: 'Para compra de ganado' });
+      this.payLoan(pr1.id, { monto: 10000, fecha: mAgo(1), bank_id: bg });
+      // Animales por lotes (cantidad)
+      const l1 = this.addAnimal({ categoria: 'Vaca', raza: 'Nelore', cantidad: 80, edad_meses: 30, peso: 380, origen: 'compra', fecha_ingreso: mAgo(4) });
+      const l2 = this.addAnimal({ categoria: 'Toro', raza: 'Brahman', cantidad: 12, edad_meses: 40, peso: 620, origen: 'compra', fecha_ingreso: mAgo(4) });
+      this.addAnimal({ categoria: 'Vaquilla', raza: 'Gyr', cantidad: 45, edad_meses: 18, peso: 260, origen: 'nacimiento', fecha_ingreso: mAgo(2) });
+      this.addAnimal({ categoria: 'Novillo', raza: 'Criolla', cantidad: 30, edad_meses: 24, peso: 340, origen: 'compra', fecha_ingreso: mAgo(1) });
+      // Muertes con motivo (por cantidad)
+      this.registrarMuerte(l1.id, { cantidad: 3, fecha: mAgo(1), motivo: 'Enfermedad' });
+      this.registrarMuerte(l2.id, { cantidad: 1, fecha: mAgo(0), motivo: 'Accidente' });
       window.dispatchEvent(new CustomEvent('store:changed'));
     },
   };

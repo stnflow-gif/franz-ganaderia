@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "online.stnflow.dyck",
+    "sha256_cert_fingerprints": ["2A:F4:D9:56:6C:19:39:F3:C9:B2:4A:FF:28:B4:C8:5A:BB:4D:A9:21:A1:78:B5:AD:8B:86:71:DB:40:46:15:37"]
+  }
+}]

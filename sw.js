@@ -2,7 +2,7 @@
    Funciona offline tras la 1ª carga online. Nota: el SW solo corre en
    https o localhost (no en file://); por eso, para offline real, hostear
    en Cloudflare Pages. Los datos igual viven en localStorage. */
-const CACHE = 'dyck-v16';
+const CACHE = 'dyck-v25';
 const ASSETS = [
   './', './index.html',
   './assets/css/app.css',
@@ -12,6 +12,12 @@ const ASSETS = [
   './assets/js/icons.js',
   './assets/js/sync.js',
   './assets/img/logo.jpg',
+  './assets/img/icon-192.png',
+  './assets/img/icon-512.png',
+  './assets/img/icon-maskable-192.png',
+  './assets/img/icon-maskable-512.png',
+  './assets/img/apple-touch-icon.png',
+  './assets/img/favicon-32.png',
   './manifest.webmanifest',
 ];
 

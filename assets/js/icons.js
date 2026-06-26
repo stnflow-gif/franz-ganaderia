@@ -12,6 +12,7 @@ const ICON_PATHS = {
   trending:    '<path d="M3 17l5-5 4 4 8-8"/><path d="M17 8h4v4"/>',
   settings:    '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
   plus:        '<path d="M12 5v14M5 12h14"/>',
+  search:      '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
   arrowUp:     '<path d="M12 19V5M6 11l6-6 6 6"/>',
   arrowDown:   '<path d="M12 5v14M6 13l6 6 6-6"/>',
   wallet:      '<path d="M3 7a2 2 0 0 1 2-2h12v4M3 7v10a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-3M3 7h16a1 1 0 0 1 1 1v3"/><circle cx="17" cy="13" r="1.3"/>',
