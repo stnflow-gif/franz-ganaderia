@@ -237,14 +237,15 @@ const App = {
     this._pendingHeadFn = null;
     this.addTableSearch(el);
   },
-  // Lupa de búsqueda automática sobre cada tabla con varias filas
+  // Lupa de búsqueda siempre visible sobre cada tabla/lista (haya datos o no)
   addTableSearch(el) {
+    const makeBox = () => { const box = document.createElement('div'); box.className = 'tbl-search';
+      box.innerHTML = `<span data-icon="search" data-size="16"></span><input type="text" placeholder="Buscar..." aria-label="Buscar">`;
+      return box; };
+    // Tablas con datos: filtran las filas
     $$('.table-wrap', el).forEach(w => {
       const tb = $('table', w); if (!tb) return;
-      const rows = $$('tbody tr', tb); if (rows.length < 1) return;
-      const box = document.createElement('div'); box.className = 'tbl-search';
-      box.innerHTML = `<span data-icon="search" data-size="16"></span><input type="text" placeholder="Buscar..." aria-label="Buscar en la tabla">`;
-      w.parentNode.insertBefore(box, w);
+      const box = makeBox(); w.parentNode.insertBefore(box, w);
       const inp = $('input', box);
       inp.oninput = () => { const q = inp.value.toLowerCase().trim();
         let visibles = 0;
@@ -253,6 +254,15 @@ const App = {
         if (!visibles) { if (!empty) { empty = document.createElement('div'); empty.className = 'tbl-noresult'; empty.textContent = 'Sin resultados para "' + inp.value + '"'; w.appendChild(empty); } }
         else if (empty) empty.remove();
       };
+      this.injectIcons(box);
+    });
+    // Listas vacías (sin tabla): la lupa igual aparece, para que esté siempre presente
+    $$('.empty', el).forEach(emptyEl => {
+      const parent = emptyEl.parentElement; if (!parent) return;
+      if (!parent.classList.contains('panel-body')) return;            // solo listas dentro de un panel
+      if (emptyEl.previousElementSibling && emptyEl.previousElementSibling.classList.contains('tbl-search')) return;
+      const box = makeBox();
+      parent.insertBefore(box, emptyEl);
       this.injectIcons(box);
     });
   },
