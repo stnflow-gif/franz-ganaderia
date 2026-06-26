@@ -74,7 +74,8 @@ const App = {
       note('');
     };
 
-    $('#btnGoogle').onclick = async () => {
+    const btnG = $('#btnGoogle');
+    if (btnG) btnG.onclick = async () => {
       if (!supaConfigured()) return this.login('Franz Dyck', 'franz@dyckmanantial.com', 'Google'); // modo local
       if (!window.Sync) return toast('Conectando con el servidor, probá en un segundo…');
       note('Abriendo Google…');
